@@ -16,6 +16,10 @@
 .yarnrc.yml
 .pnp*
 
+.claude
+.mcp.json
+CLAUDE.md
+
 *.swp
 *.iml
 
