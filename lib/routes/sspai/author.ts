@@ -1,3 +1,5 @@
+import { load } from 'cheerio';
+
 import InvalidParameterError from '@/errors/types/invalid-parameter';
 import type { Route } from '@/types';
 import cache from '@/utils/cache';
@@ -44,6 +46,7 @@ export const route: Route = {
 };
 
 async function handler(ctx) {
+    const origin = new URL(ctx.req.url).origin;
     const id = /^\d+$/.test(ctx.req.param('id')) ? ctx.req.param('id') : await getUserId(ctx.req.param('id'));
     const api_url = `https://sspai.com/api/v1/articles?offset=0&limit=20&author_ids=${id}&include_total=false`;
     const resp = await got({
@@ -55,7 +58,7 @@ async function handler(ctx) {
     const author_nickname = data[0].author.nickname;
     const items = await Promise.all(
         data.map((item) => {
-            const link = `https://sspai.com/api/v1/article/info/get?id=${item.id}&view=second&support_webp=true`;
+            const link = `https://sspai.com/api/v1/article/info/get?id=${item.id}&view=second`;
             let description = '';
 
             const key = `sspai: ${item.id}`;
@@ -65,9 +68,21 @@ async function handler(ctx) {
                 const articleData = response.data.data;
                 const banner = articleData.promote_image;
                 if (banner) {
-                    description = `<img src="${banner}" alt="Article Cover Image" style="display: block; margin: 0 auto;"><br>`;
+                    description = `<img src="${banner}" alt="Article Cover Image" style="display: block; margin: 0 auto;" referrerpolicy="origin"><br>`;
                 }
                 description += articleData.body;
+
+                const $ = load(description);
+                $('img').each((_, el) => {
+                    if (!$(el).attr('referrerpolicy')) {
+                        $(el).attr('referrerpolicy', 'origin');
+                    }
+                    const src = $(el).attr('src');
+                    if (src?.includes('cdnfile.sspai.com')) {
+                        $(el).attr('src', `${origin}/sspai/image-proxy?url=${encodeURIComponent(src)}`);
+                    }
+                });
+                description = $.html();
 
                 return {
                     title: item.title.trim(),

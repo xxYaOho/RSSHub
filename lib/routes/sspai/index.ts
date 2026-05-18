@@ -1,3 +1,5 @@
+import { load } from 'cheerio';
+
 import type { Route } from '@/types';
 import { ViewType } from '@/types';
 import cache from '@/utils/cache';
@@ -29,7 +31,8 @@ export const route: Route = {
     url: 'sspai.com/index',
 };
 
-async function handler() {
+async function handler(ctx) {
+    const origin = new URL(ctx.req.url).origin;
     const api_url = 'https://sspai.com/api/v1/article/index/page/get?limit=10&offset=0&created_at=0';
     const resp = await got({
         method: 'get',
@@ -37,7 +40,7 @@ async function handler() {
     });
     const items = await Promise.all(
         resp.data.data.map((item) => {
-            const link = `https://sspai.com/api/v1/${item.slug ? `member/article/single/info/get?slug=${item.slug}` : `article/info/get?id=${item.id}`}&view=second&support_webp=true`;
+            const link = `https://sspai.com/api/v1/${item.slug ? `member/article/single/info/get?slug=${item.slug}` : `article/info/get?id=${item.id}`}&view=second`;
             let description = '';
 
             const key = `sspai: ${item.id}`;
@@ -46,12 +49,24 @@ async function handler() {
                 const articleData = response.data.data;
                 const banner = articleData.promote_image;
                 if (banner) {
-                    description = `<img src="${banner}" alt="Article Cover Image" style="display: block; margin: 0 auto;"><br>`;
+                    description = `<img src="${banner}" alt="Article Cover Image" style="display: block; margin: 0 auto;" referrerpolicy="origin"><br>`;
                 }
                 if (articleData.body_extends) {
                     description += articleData.body_extends.map((bodyExtendsItem) => `<h2>${bodyExtendsItem.title}</h2>${bodyExtendsItem.body}`).join('');
                 }
                 description += articleData.body;
+
+                const $ = load(description);
+                $('img').each((_, el) => {
+                    if (!$(el).attr('referrerpolicy')) {
+                        $(el).attr('referrerpolicy', 'origin');
+                    }
+                    const src = $(el).attr('src');
+                    if (src?.includes('cdnfile.sspai.com')) {
+                        $(el).attr('src', `${origin}/sspai/image-proxy?url=${encodeURIComponent(src)}`);
+                    }
+                });
+                description = $.html();
 
                 return {
                     title: item.title.trim(),

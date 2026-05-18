@@ -1,3 +1,5 @@
+import { load } from 'cheerio';
+
 import type { Route } from '@/types';
 import cache from '@/utils/cache';
 import got from '@/utils/got';
@@ -27,7 +29,8 @@ export const route: Route = {
     url: 'sspai.com/matrix',
 };
 
-async function handler() {
+async function handler(ctx) {
+    const origin = new URL(ctx.req.url).origin;
     const api_url = 'https://sspai.com/api/v1/articles?offset=0&limit=20&is_matrix=1&sort=matrix_at&include_total=false';
     const resp = await got({
         method: 'get',
@@ -36,7 +39,7 @@ async function handler() {
     const data = resp.data.list;
     const items = await Promise.all(
         data.map((item) => {
-            const link = `https://sspai.com/api/v1/article/info/get?id=${item.id}&view=second&support_webp=true`;
+            const link = `https://sspai.com/api/v1/article/info/get?id=${item.id}&view=second`;
             let description = '';
 
             const key = `sspai: ${item.id}`;
@@ -46,9 +49,21 @@ async function handler() {
                 const articleData = response.data.data;
                 const banner = articleData.promote_image;
                 if (banner) {
-                    description = `<img src="${banner}" alt="Article Cover Image" style="display: block; margin: 0 auto;"><br>`;
+                    description = `<img src="${banner}" alt="Article Cover Image" style="display: block; margin: 0 auto;" referrerpolicy="origin"><br>`;
                 }
                 description += articleData.body;
+
+                const $ = load(description);
+                $('img').each((_, el) => {
+                    if (!$(el).attr('referrerpolicy')) {
+                        $(el).attr('referrerpolicy', 'origin');
+                    }
+                    const src = $(el).attr('src');
+                    if (src?.includes('cdnfile.sspai.com')) {
+                        $(el).attr('src', `${origin}/sspai/image-proxy?url=${encodeURIComponent(src)}`);
+                    }
+                });
+                description = $.html();
 
                 return {
                     title: item.title.trim(),

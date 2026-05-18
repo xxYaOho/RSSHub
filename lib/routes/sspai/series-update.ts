@@ -1,3 +1,5 @@
+import { load } from 'cheerio';
+
 import type { Route } from '@/types';
 import got from '@/utils/got';
 import { parseDate } from '@/utils/parse-date';
@@ -27,6 +29,7 @@ export const route: Route = {
 };
 
 async function handler(ctx) {
+    const origin = new URL(ctx.req.url).origin;
     const id = ctx.req.param('id');
 
     const seriesInfo = await got.get(`https://sspai.com/api/v1/series/info/get?id=${id}&view=second`);
@@ -36,10 +39,23 @@ async function handler(ctx) {
         response.data.data.map(async (item) => {
             let description: string;
             if (item.probation) {
-                const res = await got(`https://sspai.com/api/v1/article/info/get?id=${item.id}&view=second&support_webp=true`);
+                const res = await got(`https://sspai.com/api/v1/article/info/get?id=${item.id}&view=second`);
                 description = res.data.data.body;
             } else {
-                description = `<img src="https://cdn.sspai.com/${item.banner}">`;
+                description = `<img src="https://cdnfile.sspai.com/${item.banner}" referrerpolicy="origin">`;
+            }
+            if (description) {
+                const $ = load(description);
+                $('img').each((_, el) => {
+                    if (!$(el).attr('referrerpolicy')) {
+                        $(el).attr('referrerpolicy', 'origin');
+                    }
+                    const src = $(el).attr('src');
+                    if (src?.includes('cdnfile.sspai.com')) {
+                        $(el).attr('src', `${origin}/sspai/image-proxy?url=${encodeURIComponent(src)}`);
+                    }
+                });
+                description = $.html();
             }
 
             return {

@@ -1,3 +1,5 @@
+import { load } from 'cheerio';
+
 import type { Route } from '@/types';
 import cache from '@/utils/cache';
 import got from '@/utils/got';
@@ -27,6 +29,7 @@ export const route: Route = {
 };
 
 async function handler(ctx) {
+    const origin = new URL(ctx.req.url).origin;
     const id = ctx.req.param('id');
     const api_url = `https://sspai.com/api/v1/articles?offset=0&limit=20&topic_id=${id}&sort=created_at&include_total=false`;
     const response = await got({
@@ -41,7 +44,7 @@ async function handler(ctx) {
         list.map((item) => {
             const title = item.title;
             const date = item.created_at;
-            const link = `https://sspai.com/api/v1/article/info/get?id=${item.id}&view=second&support_webp=true`;
+            const link = `https://sspai.com/api/v1/article/info/get?id=${item.id}&view=second`;
             const itemUrl = `https://sspai.com/post/${item.id}`;
             const author = item.author.nickname;
 
@@ -56,9 +59,21 @@ async function handler(ctx) {
                 const articleData = response.data.data;
                 const banner = articleData.promote_image;
                 if (banner) {
-                    description = `<img src="${banner}" alt="Article Cover Image" style="display: block; margin: 0 auto;"><br>`;
+                    description = `<img src="${banner}" alt="Article Cover Image" style="display: block; margin: 0 auto;" referrerpolicy="origin"><br>`;
                 }
                 description += articleData.body;
+
+                const $ = load(description);
+                $('img').each((_, el) => {
+                    if (!$(el).attr('referrerpolicy')) {
+                        $(el).attr('referrerpolicy', 'origin');
+                    }
+                    const src = $(el).attr('src');
+                    if (src?.includes('cdnfile.sspai.com')) {
+                        $(el).attr('src', `${origin}/sspai/image-proxy?url=${encodeURIComponent(src)}`);
+                    }
+                });
+                description = $.html();
 
                 const single = {
                     title,

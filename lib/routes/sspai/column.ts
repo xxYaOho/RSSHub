@@ -1,3 +1,5 @@
+import { load } from 'cheerio';
+
 import type { Route } from '@/types';
 import cache from '@/utils/cache';
 import got from '@/utils/got';
@@ -27,6 +29,7 @@ export const route: Route = {
 };
 
 async function handler(ctx) {
+    const origin = new URL(ctx.req.url).origin;
     const id = ctx.req.param('id');
     const link = `https://sspai.com/column/${id}`;
 
@@ -58,13 +61,26 @@ async function handler(ctx) {
         list.map((item) => {
             const title = item.title;
             const date = item.created_at;
-            const link = `https://sspai.com/api/v1/article/info/get?id=${item.id}&view=second&support_webp=true`;
+            const link = `https://sspai.com/api/v1/article/info/get?id=${item.id}&view=second`;
             const itemUrl = `https://sspai.com/post/${item.id}`;
             const author = item.author.nickname;
 
             return cache.tryGet(`sspai: ${item.id}`, async () => {
                 const response = await got(link);
-                const description = response.data.data.body;
+                let description = response.data.data.body;
+                if (description) {
+                    const $ = load(description);
+                    $('img').each((_, el) => {
+                        if (!$(el).attr('referrerpolicy')) {
+                            $(el).attr('referrerpolicy', 'origin');
+                        }
+                        const src = $(el).attr('src');
+                        if (src?.includes('cdnfile.sspai.com')) {
+                            $(el).attr('src', `${origin}/sspai/image-proxy?url=${encodeURIComponent(src)}`);
+                        }
+                    });
+                    description = $.html();
+                }
 
                 const single = {
                     title,
