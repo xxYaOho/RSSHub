@@ -1,6 +1,8 @@
 import type { DataItem, Route } from '@/types';
 import ofetch from '@/utils/ofetch';
 
+import { convertWikiLinks } from './utils';
+
 export const route: Route = {
     path: '/news',
     categories: ['design'],
@@ -47,7 +49,7 @@ async function handler() {
         const pubDate = new Date(day.time * 1000);
         for (const item of day.dubao) {
             const img = item.images?.split('|').find(Boolean) || '';
-            const description = img ? `<img src="${img}"><br>${item.content}` : item.content;
+            const description = img ? `<img src="${img}"><br>${convertWikiLinks(item.content)}` : convertWikiLinks(item.content);
 
             items.push({
                 title: item.title,

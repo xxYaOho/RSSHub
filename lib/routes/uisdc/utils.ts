@@ -4,6 +4,10 @@ import cache from '@/utils/cache';
 import ofetch from '@/utils/ofetch';
 import { parseDate } from '@/utils/parse-date';
 
+export function convertWikiLinks(text: string): string {
+    return text.replaceAll(/\[\[([^\]:]+):(https?:\/\/[^\]]+)\]\]/g, '<a href="$2" target="_blank">$1</a>');
+}
+
 export interface ArticleDetail {
     description: string;
     pubDate?: Date;
@@ -14,7 +18,8 @@ async function fetchDetail(link: string): Promise<ArticleDetail> {
     const response = await ofetch(link);
     const $ = load(response);
 
-    const description = $('.entry-content').html() || $('.article-content').html() || $('.post-content').html() || '';
+    const rawDescription = $('.entry-content').html() || $('.article-content').html() || $('.post-content').html() || '';
+    const description = convertWikiLinks(rawDescription);
 
     const jsonLd = $('script[type="application/ld+json"]').text();
     let pubDate: Date | undefined;
