@@ -13,6 +13,7 @@ import { simplecc } from 'simplecc-wasm';
 import { config } from '@/config';
 import type { Data, DataItem } from '@/types';
 import cache from '@/utils/cache';
+import logger from '@/utils/logger';
 import ofetch from '@/utils/ofetch';
 import { translateChunk, translateHtml } from '@/utils/translate-gemma';
 

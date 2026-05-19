@@ -8,6 +8,7 @@
 app-minimal
 coverage
 eslint-plugins
+logs
 node_modules
 test
 
@@ -38,11 +39,8 @@ tsdown-vercel.config.ts
 vitest.config.ts
 vercel.json
 
-# git but keep the git commit hash
-.git/logs
-.git/index
-.git/info
-.git/hooks
+# git (1GB+, not needed for build)
+.git
 
 # rsshub auxiliary files
 lib/routes/**/radar.js

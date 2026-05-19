@@ -1,6 +1,9 @@
 services:
     rsshub:
-        build: .
+        build:
+            context: .
+            args:
+                USE_CHINA_NPM_REGISTRY: 1
         ports:
             - '1200:1200'
         env_file: .env
