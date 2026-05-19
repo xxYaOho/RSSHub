@@ -174,6 +174,68 @@ Docker 容器和 dev server 都占用 1200 端口时,curl 可能打到 Docker (�
 - Tailscale IP: `100.66.149.21:1200`
 
 ```bash
-# Start RSSHub with Redis cache
+# 持久化启动(推荐, 关闭终端不会中断)
+screen -dmS rsshub env \
+  CACHE_TYPE=redis REDIS_URL=redis://localhost:6379/ \
+  pnpm dev
+
+# 查看日志: screen -r rsshub
+# 脱离: Ctrl+A D
+```
+
+**双语翻译配置**(DeepSeek API 为主,本地 LM Studio 为 fallback):
+
+DeepSeek API key 和 base URL 配置在 `~/.zshrc` 中 (`DEEPSEEK_API_KEY`, `DEEPSEEK_BASE_URL`)。
+
+```bash
+source ~/.zshrc
+screen -dmS rsshub env \
+  OPENAI_API_ENDPOINT="${DEEPSEEK_BASE_URL}/v1" \
+  OPENAI_API_KEY="${DEEPSEEK_API_KEY}" \
+  OPENAI_MODEL="deepseek-v4-flash" \
+  OPENAI_INPUT_OPTION="bilingual" \
+  OPENAI_MAX_TOKENS="16384" \
+  OPENAI_PROMPT_TITLE="Translate the following title into Simplified Chinese. Reply with ONLY the translation, nothing else." \
+  OPENAI_PROMPT="Translate the following content into Simplified Chinese. Reply with ONLY the translation, nothing else." \
+  OPENAI_FALLBACK_API_ENDPOINT="http://100.106.114.92:1234/v1" \
+  OPENAI_FALLBACK_API_KEY="lmstudio" \
+  OPENAI_FALLBACK_MODEL="qwen3.6-35b-a3b" \
+  CACHE_TYPE=redis REDIS_URL=redis://localhost:6379/ \
+  pnpm dev
+```
+
+**Benchmark** (2 篇文章, clean cache):
+
+| 模型               | 耗时/篇 | 年费   | 质量 |
+| ------------------ | ------- | ------ | ---- |
+| DeepSeek V4 Flash  | ~26s    | <$0.10 | 最佳 |
+| qwen2.5-14b (本地) | ~48s    | 免费   | 良好 |
+| qwen3.6-35b (本地) | ~125s   | 免费   | 较好 |
+
+**RSS 代理路由**: `/proxy/rss?url=<外部RSS地址>&chatgpt&limit=5`
+
+- 抓取任意外部 RSS/Atom feed, 透传 RSSHub 中间件
+- 配合 `?chatgpt` 参数实现双语翻译
+- `?limit=N` 控制首次加载量, 避免本地 LLM 并发压力
+
+### 5. Clean up after development
+
+```bash
+# 删除临时测试脚本
+rm -f lib/test-*.ts
+
+# 确保没有残留旧进程占用端口
+pkill -f "tsx.*lib/index" 2>/dev/null
+lsof -i :1200 2>/dev/null | grep LISTEN
+
+# 重新干净启动
 CACHE_TYPE=redis REDIS_URL=redis://localhost:6379/ pnpm dev
 ```
+
+**常见残留进程来源:**
+
+- `dev:cache` (NODE_ENV=production) 启动失败后会残留,因其缺少 `assets/build/routes.js`
+- Docker `rsshub-rsshub-1` 容器占 1200 端口
+- 多次 `pnpm dev &` 后台累积,`tsx watch` 的子进程不会随终端关闭自动退出
+
+规律: 如果 curl 返回 `503` + "Welcome to RSSHub!" HTML,说明端口上的进程不是当前 dev server,用 `lsof -i :1200` 排查。

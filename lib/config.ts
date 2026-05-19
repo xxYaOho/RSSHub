@@ -73,8 +73,17 @@ type ConfigEnvKeys =
     | 'OPENAI_MAX_TOKENS'
     | 'OPENAI_API_ENDPOINT'
     | 'OPENAI_INPUT_OPTION'
+    | 'OPENAI_FALLBACK_API_KEY'
+    | 'OPENAI_FALLBACK_MODEL'
+    | 'OPENAI_FALLBACK_API_ENDPOINT'
     | 'OPENAI_PROMPT'
     | 'OPENAI_PROMPT_TITLE'
+    // TranslateGemma
+    | 'TRANSLATE_GEMMA_ENDPOINT'
+    | 'TRANSLATE_GEMMA_API_KEY'
+    | 'TRANSLATE_GEMMA_MODEL'
+    | 'TRANSLATE_GEMMA_MAX_INPUT_TOKENS'
+    | 'TRANSLATE_GEMMA_PROMPT'
     // Follow
     | 'FOLLOW_OWNER_USER_ID'
     | 'FOLLOW_DESCRIPTION'
@@ -347,6 +356,16 @@ export type Config = {
         inputOption: string;
         promptTitle: string;
         promptDescription: string;
+        fallbackApiKey?: string;
+        fallbackModel?: string;
+        fallbackEndpoint?: string;
+    };
+    translategemma: {
+        endpoint?: string;
+        apiKey?: string;
+        model?: string;
+        maxInputTokens: number;
+        prompt: string;
     };
     follow: {
         ownerUserId?: string;
@@ -849,6 +868,16 @@ const calculateValue = () => {
             inputOption: envs.OPENAI_INPUT_OPTION || 'description',
             promptDescription: envs.OPENAI_PROMPT || 'Please summarize the following article and reply with markdown format.',
             promptTitle: envs.OPENAI_PROMPT_TITLE || 'Please translate the following title into Simplified Chinese and reply only translated text.',
+            fallbackApiKey: envs.OPENAI_FALLBACK_API_KEY,
+            fallbackModel: envs.OPENAI_FALLBACK_MODEL,
+            fallbackEndpoint: envs.OPENAI_FALLBACK_API_ENDPOINT,
+        },
+        translategemma: {
+            endpoint: envs.TRANSLATE_GEMMA_ENDPOINT,
+            apiKey: envs.TRANSLATE_GEMMA_API_KEY,
+            model: envs.TRANSLATE_GEMMA_MODEL,
+            maxInputTokens: toInt(envs.TRANSLATE_GEMMA_MAX_INPUT_TOKENS, 1200),
+            prompt: envs.TRANSLATE_GEMMA_PROMPT || 'Translate from English to Simplified Chinese.',
         },
         follow: {
             ownerUserId: envs.FOLLOW_OWNER_USER_ID,

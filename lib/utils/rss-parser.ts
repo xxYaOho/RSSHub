@@ -4,7 +4,7 @@ import { config } from '@/config';
 
 const parser = new Parser({
     customFields: {
-        item: ['magnet'],
+        item: ['magnet', 'content:encoded'],
     },
     headers: {
         'User-Agent': config.ua,

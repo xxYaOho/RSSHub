@@ -14,6 +14,7 @@ import { config } from '@/config';
 import type { Data, DataItem } from '@/types';
 import cache from '@/utils/cache';
 import ofetch from '@/utils/ofetch';
+import { translateChunk, translateHtml } from '@/utils/translate-gemma';
 
 const md = markdownit({
     html: true,
@@ -35,25 +36,37 @@ const resolveRelativeLink = ($: CheerioAPI, elem: Element, attr: string, baseUrl
     }
 };
 
-const getAiCompletion = async (prompt: string, text: string) => {
-    const apiUrl = `${config.openai.endpoint}/chat/completions`;
-    const response = await ofetch(apiUrl, {
+const callAi = async (endpoint: string, apiKey: string | undefined, model: string | undefined, prompt: string, text: string) => {
+    const body: Record<string, unknown> = {
+        model,
+        messages: [
+            { role: 'system', content: prompt },
+            { role: 'user', content: text },
+        ],
+        temperature: config.openai.temperature,
+    };
+    if (config.openai.maxTokens) {
+        body.max_tokens = config.openai.maxTokens;
+    }
+    const response = await ofetch(`${endpoint}/chat/completions`, {
         method: 'POST',
-        body: {
-            model: config.openai.model,
-            max_tokens: config.openai.maxTokens,
-            messages: [
-                { role: 'system', content: prompt },
-                { role: 'user', content: text },
-            ],
-            temperature: config.openai.temperature,
-        },
+        body,
         headers: {
-            Authorization: `Bearer ${config.openai.apiKey}`,
+            Authorization: `Bearer ${apiKey}`,
         },
     });
+    return response.choices[0].message.content || '';
+};
 
-    return response.choices[0].message.content;
+const getAiCompletion = async (prompt: string, text: string) => {
+    try {
+        return await callAi(config.openai.endpoint, config.openai.apiKey, config.openai.model, prompt, text);
+    } catch {
+        if (config.openai.fallbackEndpoint && config.openai.fallbackModel) {
+            return await callAi(config.openai.fallbackEndpoint, config.openai.fallbackApiKey, config.openai.fallbackModel, prompt, text);
+        }
+        throw new Error('AI completion failed');
+    }
 };
 
 const getAuthorString = (item) => {
@@ -329,7 +342,7 @@ const middleware: MiddlewareHandler = async (ctx, next) => {
         }
 
         // openai
-        if (ctx.req.query('chatgpt') && config.openai.apiKey) {
+        if (ctx.req.query('chatgpt') !== undefined && config.openai.endpoint) {
             data.item = await Promise.all(
                 data.item.map(async (item) => {
                     try {
@@ -377,8 +390,143 @@ const middleware: MiddlewareHandler = async (ctx, next) => {
                                 item.description = description + '<hr/><br/>' + item.description;
                             }
                         }
+                        // handle bilingual
+                        else if (config.openai.inputOption === 'bilingual') {
+                            if (item.title) {
+                                const title = await cache.tryGet(`openai:title:${item.link}`, async () => {
+                                    let t = convert(item.title!);
+                                    t = t.replaceAll(/\[https?:\/\/[^\]]+\]/g, '');
+                                    return await getAiCompletion(config.openai.promptTitle, t);
+                                });
+                                if (title !== '') {
+                                    item.title = title + ' -- ' + item.title;
+                                }
+                            }
+                            if (item.description) {
+                                const description = await cache.tryGet(`openai:description:${item.link}`, async () => {
+                                    let d = convert(item.description!);
+                                    d = d.replaceAll(/\[https?:\/\/[^\]]+\]/g, '');
+                                    const descriptionMd = await getAiCompletion(config.openai.promptDescription, d);
+                                    return md.render(descriptionMd);
+                                });
+                                if (description !== '') {
+                                    item.description = description + '<hr/>' + item.description;
+                                }
+                            }
+                        }
                     } catch {
                         // when openai failed, return default content and not write cache
+                    }
+                    return item;
+                })
+            );
+        }
+
+        // translategemma
+        if (ctx.req.query('translategemma') !== undefined && config.translategemma.endpoint) {
+            data.item = await Promise.all(
+                data.item.map(async (item) => {
+                    const cacheKey = item.link || item.guid || '';
+                    try {
+                        if (item.title) {
+                            const title = await cache.tryGet(`translategemma:title:v2:${cacheKey}`, async () => {
+                                const t = convert(item.title!);
+                                return await translateChunk(t);
+                            });
+                            if (title !== '' && title !== item.title) {
+                                item.title = title + ' -- ' + item.title;
+                            }
+                        }
+                        if (item.description) {
+                            const description = await cache.tryGet(`translategemma:description:v2:${cacheKey}`, async () => {
+                                const d = item.description!;
+                                return await translateHtml(d);
+                            });
+                            if (description !== '') {
+                                item.description = description + '<hr/>' + item.description;
+                            }
+                        }
+                    } catch (error) {
+                        logger.warn(`[translategemma] Translation failed for ${cacheKey}:`, error);
+                    }
+                    return item;
+                })
+            );
+        }
+
+        // autots — 智能翻译（translategemma 优先，chatgpt 回退）
+        const autotsParam = ctx.req.query('autots');
+        if (autotsParam !== undefined) {
+            const rawLangCode = typeof autotsParam === 'string' && autotsParam ? autotsParam : 'cn';
+            const SAFE_LANG_PATTERN = /^[a-z]{2}(-[a-z]{2})?$/;
+            const langCode = SAFE_LANG_PATTERN.test(rawLangCode) ? rawLangCode : 'cn';
+            const langMap: Record<string, string> = {
+                cn: 'Simplified Chinese',
+                zh: 'Simplified Chinese',
+                jp: 'Japanese',
+                ja: 'Japanese',
+                en: 'English',
+                ko: 'Korean',
+                fr: 'French',
+                de: 'German',
+            };
+            const langName = langMap[langCode] || 'Simplified Chinese';
+            const gemmaPrompt = `Translate to ${langName}.`;
+            const chatgptPromptTitle = `Translate the following title to ${langName}. Reply with ONLY the translation, nothing else.`;
+            const chatgptPromptDesc = `Translate the following content to ${langName}. Reply with ONLY the translation, nothing else.`;
+
+            data.item = await Promise.all(
+                data.item.map(async (item) => {
+                    const cacheKey = item.link || item.guid || '';
+                    try {
+                        // title
+                        if (item.title) {
+                            const title = await cache.tryGet(`autots:title:${langCode}:${cacheKey}`, async () => {
+                                const t = convert(item.title!);
+                                // 1. 尝试 translategemma
+                                if (config.translategemma.endpoint) {
+                                    try {
+                                        return await translateChunk(t, gemmaPrompt);
+                                    } catch {
+                                        // 回退 chatgpt
+                                    }
+                                }
+                                // 2. 回退 chatgpt
+                                if (config.openai.endpoint) {
+                                    return await getAiCompletion(chatgptPromptTitle, t);
+                                }
+                                return t;
+                            });
+                            if (title !== '' && title !== item.title) {
+                                item.title = title + ' -- ' + item.title;
+                            }
+                        }
+                        // description
+                        if (item.description) {
+                            const description = await cache.tryGet(`autots:description:${langCode}:${cacheKey}`, async () => {
+                                const d = item.description!;
+                                // 1. 尝试 translategemma
+                                if (config.translategemma.endpoint) {
+                                    try {
+                                        return await translateHtml(d, gemmaPrompt);
+                                    } catch {
+                                        // 回退 chatgpt
+                                    }
+                                }
+                                // 2. 回退 chatgpt
+                                if (config.openai.endpoint) {
+                                    const text = convert(d);
+                                    const mdText = await getAiCompletion(chatgptPromptDesc, text);
+                                    return md.render(mdText);
+                                }
+                                return d;
+                            });
+                            if (description !== '') {
+                                item.description = description + '<hr/>' + item.description;
+                            }
+                        }
+                    } catch (error) {
+                        logger.warn(`[autots] Translation failed for ${cacheKey}:`, error);
                     }
                     return item;
                 })

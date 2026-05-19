@@ -19,6 +19,7 @@
 .claude
 .mcp.json
 CLAUDE.md
+MANUAL.md
 
 *.swp
 *.iml
