@@ -1,4 +1,14 @@
 services:
+    rsshub:
+        build: .
+        ports:
+            - '1200:1200'
+        env_file: .env
+        depends_on:
+            redis:
+                condition: service_healthy
+        restart: unless-stopped
+
     redis:
         image: redis:alpine
         restart: always

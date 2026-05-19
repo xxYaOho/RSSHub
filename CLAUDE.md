@@ -173,29 +173,29 @@ curl -s --noproxy '*' http://localhost:1200/uisdc/news | head -20
 
 Docker 容器和 dev server 都占用 1200 端口时,curl 可能打到 Docker (不含新路由) 而非 dev server。用 `lsof -i :1200` 确认谁在监听。
 
-### 4. Deployment on this machine
+### 4. 部署模式
 
-- **Redis**: Docker Compose (`docker compose up -d`)
-- **RSSHub**: `pnpm dev` 直跑宿主机,因为自定义路由只有 dev 模式能动态加载
-- Tailscale IP: `100.66.149.21:1200`
+RSSHub 区分**开发**和**生产**两种运行模式。
+
+#### 开发模式（端口 1300）
+
+用于路由开发、测试、调试。宿主机直接运行 `pnpm dev`，利用 `tsx watch` 热重载自定义路由。
 
 ```bash
-# 持久化启动(推荐, 关闭终端不会中断)
-screen -dmS rsshub env \
-  CACHE_TYPE=redis REDIS_URL=redis://localhost:6379/ \
-  pnpm dev
+# 1. 启动 Redis（Docker）
+docker compose up -d redis
 
-# 查看日志: screen -r rsshub
-# 脱离: Ctrl+A D
+# 2. 启动 RSSHub 开发服务器（宿主机）
+PORT=1300 CACHE_TYPE=redis REDIS_URL=redis://localhost:6379/ pnpm dev
+
+# 访问：http://localhost:1300
 ```
 
-**双语翻译配置**(DeepSeek API 为主,本地 LM Studio 为 fallback):
-
-DeepSeek API key 和 base URL 配置在 `~/.zshrc` 中 (`DEEPSEEK_API_KEY`, `DEEPSEEK_BASE_URL`)。
+**双语翻译开发配置**（DeepSeek API 为主，LM Studio fallback）：
 
 ```bash
 source ~/.zshrc
-screen -dmS rsshub env \
+PORT=1300 screen -dmS rsshub-dev env \
   OPENAI_API_ENDPOINT="${DEEPSEEK_BASE_URL}/v1" \
   OPENAI_API_KEY="${DEEPSEEK_API_KEY}" \
   OPENAI_MODEL="deepseek-v4-flash" \
@@ -215,6 +215,44 @@ screen -dmS rsshub env \
   pnpm dev
 ```
 
+#### 生产模式（端口 1200）
+
+用于稳定服务。Docker Compose 构建镜像并运行，不挂载源码。
+
+```bash
+# 1. 准备环境变量
+cp .env.example .env
+# 编辑 .env 填入真实值
+
+# 2. 构建并启动
+docker compose up -d --build
+
+# 访问：http://localhost:1200
+# 查看日志：docker compose logs -f rsshub
+# 重启：docker compose restart rsshub
+```
+
+**部署流程**：
+
+```
+开发路由 → 本地测试（:1300）→ 构建容器 → 重启生产（:1200）
+```
+
+#### 翻译路由参数
+
+| 参数              | 说明                                 | 示例                                        |
+| ----------------- | ------------------------------------ | ------------------------------------------- |
+| `?chatgpt`        | DeepSeek 整篇翻译                    | `/proxy/rss?url=...&chatgpt&limit=5`        |
+| `?translategemma` | TranslateGemma 分段翻译              | `/proxy/rss?url=...&translategemma&limit=1` |
+| `?autots`         | 智能翻译（gemma 优先，chatgpt 回退） | `/proxy/rss?url=...&autots=jp&limit=1`      |
+
+`?autots` 支持语言代码：`cn/zh` (中文), `jp/ja` (日文), `en` (英文), `ko` (韩文), `fr` (法文), `de` (德文)。不传值默认为 `cn`。
+
+**RSS 代理路由**: `/proxy/rss?url=<外部RSS地址>`
+
+- 抓取任意外部 RSS/Atom feed，透传 RSSHub 中间件
+- 配合翻译参数实现多语言 RSS
+
 **Benchmark** (2 篇文章, clean cache):
 
 | 模型               | 耗时/篇 | 年费   | 质量 |
@@ -222,22 +260,6 @@ screen -dmS rsshub env \
 | DeepSeek V4 Flash  | ~26s    | <$0.10 | 最佳 |
 | qwen2.5-14b (本地) | ~48s    | 免费   | 良好 |
 | qwen3.6-35b (本地) | ~125s   | 免费   | 较好 |
-
-**翻译路由参数**:
-
-| 参数              | 说明                                              | 示例                                        |
-| ----------------- | ------------------------------------------------- | ------------------------------------------- |
-| `?chatgpt`        | 使用配置 OpenAI API (DeepSeek) 整篇翻译           | `/proxy/rss?url=...&chatgpt&limit=5`        |
-| `?translategemma` | 使用 LM Studio TranslateGemma 分段翻译            | `/proxy/rss?url=...&translategemma&limit=1` |
-| `?autots`         | 智能翻译：先尝试 translategemma，失败回退 chatgpt | `/proxy/rss?url=...&autots=jp&limit=1`      |
-
-`?autots` 支持语言代码：`cn/zh` (中文), `jp/ja` (日文), `en` (英文), `ko` (韩文), `fr` (法文), `de` (德文)。不传值默认为 `cn`。
-
-**RSS 代理路由**: `/proxy/rss?url=<外部RSS地址>`
-
-- 抓取任意外部 RSS/Atom feed, 透传 RSSHub 中间件
-- 配合 `?chatgpt`, `?translategemma` 或 `?autots` 参数实现翻译
-- `?limit=N` 控制首次加载量, 避免本地 LLM 并发压力
 
 ### 5. Clean up after development
 
