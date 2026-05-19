@@ -69,34 +69,76 @@
 >
 > **少数派图片代理:** 出于防盗链兼容，sspai 所有路由的图片 `<img src>` 已改写为代理 URL，不直连 CDN。代理路由受限于 RSSHub 中间件管线的模板渲染，利用 `registry.ts:210` 的 `Response` 直接返回绕过模板层。
 
-## 本机部署
+## 部署架构
 
-### 架构
+区分**开发**和**生产**两个运行模式，端口不冲突，可同时运行。
 
 ```
-Docker Compose:
-  └── redis (缓存)
+开发环境 (端口 1300):
+  宿主机 → pnpm dev (tsx watch 热重载)
 
-宿主机:
-  └── pnpm dev (RSSHub, 含自定义路由)
+生产环境 (端口 1200):
+  Docker Compose → rsshub (构建镜像运行)
+                   → redis (缓存)
 ```
 
-### 启动
+### 开发模式（端口 1300）
+
+用于路由开发、测试、调试。宿主机直接运行，利用 `tsx watch` 热重载自定义路由。
 
 ```bash
 # 1. 启动 Redis
-docker compose up -d
+docker compose up -d redis
 
-# 2. 启动 RSSHub (开发模式，加载自定义路由)
-CACHE_TYPE=redis REDIS_URL=redis://localhost:6379/ pnpm dev
+# 2. 启动 RSSHub 开发服务器
+PORT=1300 CACHE_TYPE=redis REDIS_URL=redis://localhost:6379/ pnpm dev
+
+# 访问: http://localhost:1300
 ```
 
-> 生产 Docker 镜像 (`diygod/rsshub`) 只含预编译路由，不含本地开发的自定义路由。因此 RSSHub 必须通过 `pnpm dev` 在宿主机运行。
+### 生产模式（端口 1200）
 
-### 访问
+用于稳定服务。Docker Compose 构建镜像运行，不挂载源码。
 
-- 本机: `http://localhost:1200`
-- Tailscale 内网: `http://100.66.149.21:1200`
+```bash
+# 1. 准备环境变量
+cp .env.example .env
+# 编辑 .env 填入 API Key 等真实值
+
+# 2. 构建并启动
+docker compose up -d --build
+
+# 访问: http://localhost:1200
+# 查看日志: docker compose logs -f rsshub
+```
+
+**部署流程：**
+
+```
+开发路由 → 本地测试 (:1300) → 构建容器 → 重启生产 (:1200)
+```
+
+### 环境变量配置
+
+生产配置通过 `.env` 文件加载，关键变量：
+
+| 变量                                     | 说明                                           |
+| ---------------------------------------- | ---------------------------------------------- |
+| `PORT`                                   | 服务端口（生产默认 1200）                      |
+| `CACHE_TYPE`                             | 缓存类型：`memory` 或 `redis`                  |
+| `REDIS_URL`                              | Redis 连接地址（生产用 `redis://redis:6379/`） |
+| `OPENAI_API_ENDPOINT` / `OPENAI_API_KEY` | DeepSeek / OpenAI 翻译                         |
+| `TRANSLATE_GEMMA_ENDPOINT`               | LM Studio 翻译（需带 `/v1` 后缀）              |
+| `TRANSLATE_GEMMA_API_KEY`                | LM Studio API Key                              |
+
+> **注意**: `docker compose restart` 不会重新加载 `.env` 变更。修改 `.env` 后需执行 `docker compose down && docker compose up -d` 才能生效。
+
+### 访问地址
+
+| 环境 | 本机                    | Tailscale 内网              |
+| ---- | ----------------------- | --------------------------- |
+| 开发 | `http://localhost:1300` | `http://100.66.149.21:1300` |
+| 生产 | `http://localhost:1200` | `http://100.66.149.21:1200` |
 
 ## 开发新路由
 
@@ -143,6 +185,7 @@ OPENAI_FALLBACK_API_KEY="lmstudio"
 OPENAI_FALLBACK_MODEL="qwen3.6-35b-a3b"
 
 # TranslateGemma 配置（本地 LM Studio）
+# 注意：endpoint 必须包含 /v1 后缀，代码会自动拼接 /chat/completions
 TRANSLATE_GEMMA_ENDPOINT="http://100.106.114.92:1234/v1"
 TRANSLATE_GEMMA_API_KEY="lmstudio"
 TRANSLATE_GEMMA_MODEL="translategemma-12b-it"

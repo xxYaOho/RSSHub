@@ -113,7 +113,7 @@ All config via environment variables. `config` is a frozen object computed at im
 - Route-specific credentials: `BILIBILI_COOKIE_*`, `GITHUB_ACCESS_TOKEN`, `TWITTER_*`, etc.
 - `DEBUG_INFO` (default `'true'`) — enables debug endpoints
 - **Translation**:
-    - `TRANSLATE_GEMMA_ENDPOINT` / `TRANSLATE_GEMMA_API_KEY` / `TRANSLATE_GEMMA_MODEL` — TranslateGemma (LM Studio)
+    - `TRANSLATE_GEMMA_ENDPOINT` / `TRANSLATE_GEMMA_API_KEY` / `TRANSLATE_GEMMA_MODEL` — TranslateGemma (LM Studio). **Endpoint must include `/v1` suffix** (e.g. `http://host:1234/v1`), code appends `/chat/completions`.
     - `TRANSLATE_GEMMA_MAX_INPUT_TOKENS` (default 1200) — chunk size limit
     - `TRANSLATE_GEMMA_PROMPT` — e.g. "Translate from English to Simplified Chinese."
     - `OPENAI_API_ENDPOINT` / `OPENAI_API_KEY` / `OPENAI_MODEL` — chatgpt translation (DeepSeek, OpenAI, etc.)
