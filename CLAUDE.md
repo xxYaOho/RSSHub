@@ -112,6 +112,12 @@ All config via environment variables. `config` is a frozen object computed at im
 - `ACCESS_KEY` — if set, required as `?key=` or `Authorization: Bearer` header
 - Route-specific credentials: `BILIBILI_COOKIE_*`, `GITHUB_ACCESS_TOKEN`, `TWITTER_*`, etc.
 - `DEBUG_INFO` (default `'true'`) — enables debug endpoints
+- **Translation**:
+    - `TRANSLATE_GEMMA_ENDPOINT` / `TRANSLATE_GEMMA_API_KEY` / `TRANSLATE_GEMMA_MODEL` — TranslateGemma (LM Studio)
+    - `TRANSLATE_GEMMA_MAX_INPUT_TOKENS` (default 1200) — chunk size limit
+    - `TRANSLATE_GEMMA_PROMPT` — e.g. "Translate from English to Simplified Chinese."
+    - `OPENAI_API_ENDPOINT` / `OPENAI_API_KEY` / `OPENAI_MODEL` — chatgpt translation (DeepSeek, OpenAI, etc.)
+    - `OPENAI_FALLBACK_API_ENDPOINT` / `OPENAI_FALLBACK_API_KEY` / `OPENAI_FALLBACK_MODEL` — fallback LLM
 
 ## Critical conventions
 
@@ -200,6 +206,11 @@ screen -dmS rsshub env \
   OPENAI_FALLBACK_API_ENDPOINT="http://100.106.114.92:1234/v1" \
   OPENAI_FALLBACK_API_KEY="lmstudio" \
   OPENAI_FALLBACK_MODEL="qwen3.6-35b-a3b" \
+  TRANSLATE_GEMMA_ENDPOINT="http://100.106.114.92:1234/v1" \
+  TRANSLATE_GEMMA_API_KEY="lmstudio" \
+  TRANSLATE_GEMMA_MODEL="translategemma-12b-it" \
+  TRANSLATE_GEMMA_MAX_INPUT_TOKENS="1200" \
+  TRANSLATE_GEMMA_PROMPT="Translate from English to Simplified Chinese." \
   CACHE_TYPE=redis REDIS_URL=redis://localhost:6379/ \
   pnpm dev
 ```
@@ -212,10 +223,20 @@ screen -dmS rsshub env \
 | qwen2.5-14b (本地) | ~48s    | 免费   | 良好 |
 | qwen3.6-35b (本地) | ~125s   | 免费   | 较好 |
 
-**RSS 代理路由**: `/proxy/rss?url=<外部RSS地址>&chatgpt&limit=5`
+**翻译路由参数**:
+
+| 参数              | 说明                                              | 示例                                        |
+| ----------------- | ------------------------------------------------- | ------------------------------------------- |
+| `?chatgpt`        | 使用配置 OpenAI API (DeepSeek) 整篇翻译           | `/proxy/rss?url=...&chatgpt&limit=5`        |
+| `?translategemma` | 使用 LM Studio TranslateGemma 分段翻译            | `/proxy/rss?url=...&translategemma&limit=1` |
+| `?autots`         | 智能翻译：先尝试 translategemma，失败回退 chatgpt | `/proxy/rss?url=...&autots=jp&limit=1`      |
+
+`?autots` 支持语言代码：`cn/zh` (中文), `jp/ja` (日文), `en` (英文), `ko` (韩文), `fr` (法文), `de` (德文)。不传值默认为 `cn`。
+
+**RSS 代理路由**: `/proxy/rss?url=<外部RSS地址>`
 
 - 抓取任意外部 RSS/Atom feed, 透传 RSSHub 中间件
-- 配合 `?chatgpt` 参数实现双语翻译
+- 配合 `?chatgpt`, `?translategemma` 或 `?autots` 参数实现翻译
 - `?limit=N` 控制首次加载量, 避免本地 LLM 并发压力
 
 ### 5. Clean up after development

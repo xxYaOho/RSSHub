@@ -102,6 +102,83 @@ CACHE_TYPE=redis REDIS_URL=redis://localhost:6379/ pnpm dev
 
 详见 `.claude/skills/rsshub-route-dev/SKILL.md`，包含从站点调研到代码实现的 SOP。
 
+## 翻译功能
+
+支持通过 URL 查询参数对 RSS 内容进行翻译，兼容任意路由（包括外部 RSS 代理）。
+
+### 三个翻译参数
+
+| 参数              | 引擎                              | 特点                                        | 适用场景                 |
+| ----------------- | --------------------------------- | ------------------------------------------- | ------------------------ |
+| `?chatgpt`        | DeepSeek / OpenAI                 | 整篇一次性翻译，支持摘要/翻译/双语模式      | 常规对话模型，速度快     |
+| `?translategemma` | TranslateGemma-12b-it (LM Studio) | 按段落/标题/列表分段翻译，保留 HTML 结构    | 专业 MT 模型，翻译质量高 |
+| `?autots`         | 智能切换                          | 先尝试 translategemma，失败自动回退 chatgpt | 一键翻译，无需关心底层   |
+
+### 多语言支持 (`?autots`)
+
+| 代码                                     | 语言     |
+| ---------------------------------------- | -------- |
+| `?autots` 或 `?autots=cn` / `?autots=zh` | 简体中文 |
+| `?autots=jp` / `?autots=ja`              | 日文     |
+| `?autots=en`                             | 英文     |
+| `?autots=ko`                             | 韩文     |
+| `?autots=fr`                             | 法文     |
+| `?autots=de`                             | 德文     |
+
+### 环境变量配置
+
+```bash
+# OpenAI 主配置（DeepSeek）
+OPENAI_API_ENDPOINT="https://api.deepseek.com/v1"
+OPENAI_API_KEY="sk-..."
+OPENAI_MODEL="deepseek-v4-flash"
+OPENAI_INPUT_OPTION="bilingual"          # description / title / both / bilingual
+OPENAI_MAX_TOKENS="16384"
+OPENAI_PROMPT_TITLE="Translate the following title into Simplified Chinese..."
+OPENAI_PROMPT="Translate the following content into Simplified Chinese..."
+
+# OpenAI fallback（本地 LM Studio）
+OPENAI_FALLBACK_API_ENDPOINT="http://100.106.114.92:1234/v1"
+OPENAI_FALLBACK_API_KEY="lmstudio"
+OPENAI_FALLBACK_MODEL="qwen3.6-35b-a3b"
+
+# TranslateGemma 配置（本地 LM Studio）
+TRANSLATE_GEMMA_ENDPOINT="http://100.106.114.92:1234/v1"
+TRANSLATE_GEMMA_API_KEY="lmstudio"
+TRANSLATE_GEMMA_MODEL="translategemma-12b-it"
+TRANSLATE_GEMMA_MAX_INPUT_TOKENS="1200"   # 每段最大 token 数
+TRANSLATE_GEMMA_PROMPT="Translate from English to Simplified Chinese."
+```
+
+### 使用示例
+
+```bash
+# 外部 RSS + chatgpt 双语翻译
+curl "http://localhost:1200/proxy/rss?url=https://example.com/feed.xml&chatgpt&limit=5"
+
+# 外部 RSS + TranslateGemma 分段翻译
+curl "http://localhost:1200/proxy/rss?url=https://example.com/feed.xml&translategemma&limit=1"
+
+# 外部 RSS + autots 智能翻译（默认中文）
+curl "http://localhost:1200/proxy/rss?url=https://example.com/feed.xml&autots&limit=1"
+
+# 外部 RSS + autots 翻译成日文
+curl "http://localhost:1200/proxy/rss?url=https://example.com/feed.xml&autots=jp&limit=1"
+
+# 任意 RSSHub 路由 + 翻译
+curl "http://localhost:1200/uisdc/news?translategemma&limit=3"
+```
+
+### 性能对比（单篇英文文章）
+
+| 引擎                                   | 耗时  | 质量             |
+| -------------------------------------- | ----- | ---------------- |
+| DeepSeek V4 Flash (`?chatgpt`)         | ~26s  | 最佳             |
+| TranslateGemma 12B (`?translategemma`) | ~64s  | 高（段落级精准） |
+| qwen3.6-35b (`?chatgpt` fallback)      | ~125s | 较好             |
+
+> **注意**: `?translategemma` 采用分段翻译，长文会拆成多个 chunk 串行处理，因此总耗时比 `?chatgpt` 长，但保留了段落和标题结构，不会出现整篇文本截断的问题。
+
 ### 关键约定
 
 - 路由文件放在 `lib/routes/<namespace>/`
