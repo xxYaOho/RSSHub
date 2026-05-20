@@ -1,4 +1,3 @@
-import { config } from '@/config';
 import logger from '@/utils/logger';
 
 import { chunkHtml } from './ast-chunker';
@@ -10,8 +9,7 @@ export * from './translator';
 const CONCURRENCY_LIMIT = 3;
 
 export async function translateHtml(html: string, customPrompt?: string): Promise<string> {
-    const { maxInputTokens } = config.translategemma;
-    const chunks = chunkHtml(html, maxInputTokens);
+    const chunks = chunkHtml(html);
 
     if (chunks.length === 0) {
         return html;
