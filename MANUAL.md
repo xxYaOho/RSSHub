@@ -222,6 +222,20 @@ curl "http://localhost:1200/uisdc/news?translategemma&limit=3"
 
 > **注意**: `?translategemma` 采用分段翻译，长文会拆成多个 chunk 串行处理，因此总耗时比 `?chatgpt` 长，但保留了段落和标题结构，不会出现整篇文本截断的问题。
 
+### 翻译阻塞警告
+
+翻译参数（`?autots`、`?translategemma`、`?chatgpt`）的处理时间较长（单篇可能数十秒到数分钟）。由于 RSSHub 缓存层的限制，**同一 path 的并发请求会被阻塞**。
+
+例如：当你请求 `/uisdc/news?autots&limit=5` 且翻译正在进行时，同一时间内请求 `/uisdc/news`（不带翻译参数）也会卡住，最多等待 60 秒后返回错误。
+
+**例外**：`/proxy/rss` 路由已将 `url` 和翻译参数纳入 cache key，不同 RSS 源之间互不阻塞，带翻译与不带翻译也互不阻塞。
+
+建议：
+
+- 使用翻译时始终配合 `limit=1` 或 `limit=3`，减少翻译量
+- 首次请求会触发翻译并缓存，后续直接命中缓存，不再阻塞
+- 不要同时向同一个带翻译的 URL 发起多个请求（`/proxy/rss` 除外）
+
 ### 关键约定
 
 - 路由文件放在 `lib/routes/<namespace>/`

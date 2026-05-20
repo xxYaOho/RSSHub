@@ -19,9 +19,18 @@ const middleware: MiddlewareHandler = async (ctx, next) => {
     const requestPath = ctx.req.path;
     const format = `:${ctx.req.query('format') || 'rss'}`;
     const limit = ctx.req.query('limit') ? `:${ctx.req.query('limit')}` : '';
+
+    let extra = '';
+    if (requestPath === '/proxy/rss') {
+        const url = ctx.req.query('url') || '';
+        const chatgpt = ctx.req.query('chatgpt') ? ':chatgpt' : '';
+        const autots = ctx.req.query('autots') ? `:autots=${ctx.req.query('autots')}` : '';
+        extra = `:url=${url}${chatgpt}${autots}`;
+    }
+
     const { h64ToString } = await xxhash();
-    const key = 'rsshub:koa-redis-cache:' + h64ToString(requestPath + format + limit);
-    const controlKey = 'rsshub:path-requested:' + h64ToString(requestPath + format + limit);
+    const key = 'rsshub:koa-redis-cache:' + h64ToString(requestPath + format + limit + extra);
+    const controlKey = 'rsshub:path-requested:' + h64ToString(requestPath + format + limit + extra);
 
     const isRequesting = await cacheModule.globalCache.get(controlKey);
 

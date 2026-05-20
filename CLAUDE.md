@@ -282,3 +282,18 @@ CACHE_TYPE=redis REDIS_URL=redis://localhost:6379/ pnpm dev
 - 多次 `pnpm dev &` 后台累积,`tsx watch` 的子进程不会随终端关闭自动退出
 
 规律: 如果 curl 返回 `503` + "Welcome to RSSHub!" HTML,说明端口上的进程不是当前 dev server,用 `lsof -i :1200` 排查。
+
+## Known Issues
+
+### Cache key 未包含翻译参数
+
+`lib/middleware/cache.ts` 的缓存 key 默认只计算 `requestPath + format + limit`，**不包含 `autots`/`translategemma`/`chatgpt` 等翻译参数**。
+
+后果：
+
+- 带翻译参数的请求和不带翻译参数的请求共享同一个 `controlKey`，翻译期间（可能 10-20 分钟）同 path 的无参请求会被阻塞 60 秒后返回 503
+- 缓存内容可能交叉污染（无参请求命中翻译后的缓存）
+
+**例外**：`/proxy/rss` 路由已将 `url` 和翻译参数纳入 cache key，不受此问题影响。
+
+临时规避（其他路由）：使用翻译参数时，将 `limit` 调小（如 `limit=1`），减少翻译总量。
