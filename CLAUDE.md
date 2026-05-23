@@ -171,25 +171,57 @@ curl -s --noproxy '*' http://localhost:1200/uisdc/news | head -20
 
 **注意**: macOS 有代理环境变量 (`http_proxy`) 可能干扰 curl。加 `--noproxy '*'` 避免。
 
-Docker 容器和 dev server 都占用 1200 端口时,curl 可能打到 Docker (不含新路由) 而非 dev server。用 `lsof -i :1200` 确认谁在监听。
+生产 (1200) 和开发 (1300) 端口分离，测试新路由指向 1300 端口。用 `lsof -i :1300` 确认 dev server 在监听。
 
 ### 4. 部署模式
 
-RSSHub 区分**开发**和**生产**两种运行模式。
+RSSHub 区分**开发**和**生产**两种运行模式。生产和开发共享同一个 Redis（Docker 容器，端口 6379，不经过 Docker 网络，宿主机直接 `localhost:6379` 访问）。
 
-#### 开发模式（端口 1300）
-
-用于路由开发、测试、调试。宿主机直接运行 `pnpm dev`，利用 `tsx watch` 热重载自定义路由。
+**启动 Redis**（两个环境都需要）：
 
 ```bash
-# 1. 启动 Redis（Docker）
 docker compose up -d redis
+```
 
-# 2. 启动 RSSHub 开发服务器（宿主机）
+#### 生产环境 — master 分支，端口 1200，pm2 守护
+
+Master 分支存放稳定代码，由 pm2 管理进程（掉线自动重启、开机自启），通过 `tsx` 直接运行 TypeScript 源码，无需 build。
+
+```bash
+# 启动
+pm2 start "npx tsx lib/index.ts" --name rsshub \
+  --env PORT=1200 \
+  --env CACHE_TYPE=redis \
+  --env REDIS_URL=redis://localhost:6379/
+
+# 管理
+pm2 restart rsshub   # 重启
+pm2 stop rsshub      # 停止
+pm2 logs rsshub      # 查看日志
+pm2 status           # 查看状态
+```
+
+部署流程：`worktree.dev 开发 → merge 到 master → pm2 restart rsshub`
+
+#### 开发环境 — worktree.dev 分支，端口 1300，热重载
+
+通过 git worktree 创建独立的 dev 分支目录，使用 `pnpm dev`（tsx watch）热重载。
+
+```bash
+# 1. 创建 worktree（首次）
+git worktree add -b dev /Users/teatin/.worktree/RSSHub/dev master
+
+# 2. 安装依赖（首次）
+cd /Users/teatin/.worktree/RSSHub/dev && pnpm install
+
+# 3. 启动开发服务器
+cd /Users/teatin/.worktree/RSSHub/dev
 PORT=1300 CACHE_TYPE=redis REDIS_URL=redis://localhost:6379/ pnpm dev
 
 # 访问：http://localhost:1300
 ```
+
+如需翻译功能，追加翻译相关环境变量。
 
 **双语翻译开发配置**（DeepSeek API 为主，LM Studio fallback）：
 
@@ -215,28 +247,12 @@ PORT=1300 screen -dmS rsshub-dev env \
   pnpm dev
 ```
 
-#### 生产模式（端口 1200）
+**环境对比**：
 
-用于稳定服务。Docker Compose 构建镜像并运行，不挂载源码。
-
-```bash
-# 1. 准备环境变量
-cp .env.example .env
-# 编辑 .env 填入真实值
-
-# 2. 构建并启动
-docker compose up -d --build
-
-# 访问：http://localhost:1200
-# 查看日志：docker compose logs -f rsshub
-# 重启：docker compose restart rsshub
-```
-
-**部署流程**：
-
-```
-开发路由 → 本地测试（:1300）→ 构建容器 → 重启生产（:1200）
-```
+| 环境 | 端口 | 分支           | 启动方式  | 特点               |
+| ---- | ---- | -------------- | --------- | ------------------ |
+| 生产 | 1200 | master         | pm2 + tsx | 进程守护，开机自启 |
+| 开发 | 1300 | dev (worktree) | pnpm dev  | 热重载，独立目录   |
 
 #### 翻译路由参数
 
@@ -268,20 +284,19 @@ docker compose up -d --build
 rm -f lib/test-*.ts
 
 # 确保没有残留旧进程占用端口
-pkill -f "tsx.*lib/index" 2>/dev/null
+lsof -i :1300 2>/dev/null | grep LISTEN
 lsof -i :1200 2>/dev/null | grep LISTEN
 
-# 重新干净启动
-CACHE_TYPE=redis REDIS_URL=redis://localhost:6379/ pnpm dev
+# 重新干净启动开发服务器
+PORT=1300 CACHE_TYPE=redis REDIS_URL=redis://localhost:6379/ pnpm dev
 ```
 
 **常见残留进程来源:**
 
-- `dev:cache` (NODE_ENV=production) 启动失败后会残留,因其缺少 `assets/build/routes.js`
-- Docker `rsshub-rsshub-1` 容器占 1200 端口
-- 多次 `pnpm dev &` 后台累积,`tsx watch` 的子进程不会随终端关闭自动退出
+- `tsx watch` 的子进程不会随终端关闭自动退出，多次 `pnpm dev &` 会积累
+- pm2 占用 1200 端口（正常的生产进程，不是残留）
 
-规律: 如果 curl 返回 `503` + "Welcome to RSSHub!" HTML,说明端口上的进程不是当前 dev server,用 `lsof -i :1200` 排查。
+规律: 如果 curl 返回 `503` + "Welcome to RSSHub!" HTML，说明端口上的进程不是当前 dev server，用 `lsof -i :1300` 排查。
 
 ## Known Issues
 
