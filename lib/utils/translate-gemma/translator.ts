@@ -29,7 +29,7 @@ export async function translateChunk(text: string, customPrompt?: string): Promi
         method: 'POST',
         body,
         headers,
-        timeout: 60000,
+        timeout: 300000,
     });
 
     return response.choices[0].message.content || '';
