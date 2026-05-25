@@ -203,6 +203,8 @@ pm2 status           # 查看状态
 
 部署流程：`worktree.dev 开发 → merge 到 master → pm2 restart rsshub`
 
+**注意**: `pm2 restart --update-env` **不会**重新读取 `.env` 文件（只更新当前 shell 环境变量）。修改 `.env` 后需 `pm2 delete rsshub && pm2 start ...` 重建进程，或直接在 `pm2 start` 命令中通过 `--env` 传入变更的变量。
+
 #### 开发环境 — worktree.dev 分支，端口 1300，热重载
 
 通过 git worktree 创建独立的 dev 分支目录，使用 `pnpm dev`（tsx watch）热重载。
@@ -294,6 +296,7 @@ PORT=1300 CACHE_TYPE=redis REDIS_URL=redis://localhost:6379/ pnpm dev
 **常见残留进程来源:**
 
 - `tsx watch` 的子进程不会随终端关闭自动退出，多次 `pnpm dev &` 会积累
+- `npx tsx lib/index.ts` 前台/后台测试后，子进程（实际 node 进程）可能残留，需用 `ps aux | grep tsx` 排查并 `kill`
 - pm2 占用 1200 端口（正常的生产进程，不是残留）
 
 规律: 如果 curl 返回 `503` + "Welcome to RSSHub!" HTML，说明端口上的进程不是当前 dev server，用 `lsof -i :1300` 排查。
