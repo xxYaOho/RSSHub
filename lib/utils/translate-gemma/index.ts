@@ -7,6 +7,7 @@ import { translateChunk } from './translator';
 export * from './translator';
 
 const CONCURRENCY_LIMIT = 3;
+const MAX_RETRIES = 2;
 
 export async function translateHtml(html: string, customPrompt?: string): Promise<string> {
     const chunks = chunkHtml(html);
@@ -26,12 +27,24 @@ export async function translateHtml(html: string, customPrompt?: string): Promis
         const batchResults = await Promise.all(
             batch.map(async (chunk, batchIndex) => {
                 const globalIndex = i + batchIndex;
-                try {
-                    return await translateChunk(chunk.text, customPrompt);
-                } catch (error) {
-                    logger.error(`[translategemma] Chunk ${globalIndex} translation failed:`, error);
-                    return chunk.text;
+                if (chunk.noTranslate) {
+                    return ''; // reassembler 使用 rawHtml
                 }
+                for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+                    try {
+                        // oxlint-disable-next-line no-await-in-loop
+                        return await translateChunk(chunk.text, customPrompt); // 故意在 retry 循环内 await
+                    } catch (error) {
+                        if (attempt === MAX_RETRIES) {
+                            logger.error(`[translategemma] Chunk ${globalIndex} failed after ${MAX_RETRIES + 1} attempts:`, error);
+                            return chunk.text;
+                        }
+                        logger.warn(`[translategemma] Chunk ${globalIndex} attempt ${attempt + 1} failed, retrying...`);
+                        // oxlint-disable-next-line no-await-in-loop
+                        await new Promise((r) => setTimeout(r, 1000));
+                    }
+                }
+                return chunk.text;
             })
         );
         translations.push(...batchResults);

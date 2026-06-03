@@ -53,16 +53,18 @@ describe('chunkHtml', () => {
         expect(chunks[0].listParent!.attrs).toEqual({ class: 'numbered' });
     });
 
-    it('should skip code and pre elements', () => {
+    it('should pass through code and pre elements as noTranslate chunks', () => {
         const html = '<p>Before code.</p><pre><code>const x = 1;</code></pre><p>After code.</p>';
         const chunks = chunkHtml(html);
 
-        expect(chunks).toHaveLength(2);
-        expect(chunks[0].text).toBe('Before code.');
-        expect(chunks[1].text).toBe('After code.');
+        expect(chunks).toHaveLength(3);
+        expect(chunks[0]).toMatchObject({ tagName: 'p', text: 'Before code.' });
+        expect(chunks[1]).toMatchObject({ tagName: 'pre', noTranslate: true });
+        expect(chunks[1].rawHtml).toBe('<code>const x = 1;</code>');
+        expect(chunks[2]).toMatchObject({ tagName: 'p', text: 'After code.' });
     });
 
-    it('should replace code elements with placeholders', () => {
+    it('should replace code elements with placeholders preserving wrapper tags', () => {
         const html = '<p>Some text with <code>inline code</code> inside.</p>';
         const chunks = chunkHtml(html);
 
@@ -71,6 +73,44 @@ describe('chunkHtml', () => {
         expect(chunks[0].placeholders.size).toBe(1);
         // Text should contain the placeholder key instead of actual code
         expect(chunks[0].text).not.toContain('<code>');
+        // Placeholder value must include the <code> wrapper tag
+        const placeholderValues = [...chunks[0].placeholders.values()];
+        expect(placeholderValues[0]).toBe('<code>inline code</code>');
+    });
+
+    it('should preserve code attributes in placeholder values', () => {
+        const html = '<p>Check <code class="language-js">let x;</code></p>';
+        const chunks = chunkHtml(html);
+
+        expect(chunks).toHaveLength(1);
+        const placeholderValues = [...chunks[0].placeholders.values()];
+        expect(placeholderValues[0]).toBe('<code class="language-js">let x;</code>');
+    });
+
+    it('should handle bare text nodes as paragraph chunks', () => {
+        const html = 'Plain text without any HTML tags';
+        const chunks = chunkHtml(html);
+
+        expect(chunks).toHaveLength(1);
+        expect(chunks[0]).toMatchObject({ tagName: 'p', text: 'Plain text without any HTML tags' });
+    });
+
+    it('should handle text nodes mixed with block elements inside a div', () => {
+        const html = '<div>Intro text<p>Block text</p>Outro text</div>';
+        const chunks = chunkHtml(html);
+
+        expect(chunks).toHaveLength(3);
+        expect(chunks[0]).toMatchObject({ tagName: 'p', text: 'Intro text' });
+        expect(chunks[1]).toMatchObject({ tagName: 'p', text: 'Block text' });
+        expect(chunks[2]).toMatchObject({ tagName: 'p', text: 'Outro text' });
+    });
+
+    it('should skip empty block elements', () => {
+        const html = '<p></p><p>Content</p>';
+        const chunks = chunkHtml(html);
+
+        expect(chunks).toHaveLength(1);
+        expect(chunks[0]).toMatchObject({ tagName: 'p', text: 'Content' });
     });
 
     it('should handle mixed content: paragraphs, headings, and lists', () => {

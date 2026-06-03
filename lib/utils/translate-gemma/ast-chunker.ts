@@ -1,5 +1,6 @@
 import type { CheerioAPI, Element } from 'cheerio';
 import { load } from 'cheerio';
+import * as entities from 'entities';
 
 export interface ListParent {
     tagName: string;
@@ -12,10 +13,22 @@ export interface Chunk {
     text: string;
     placeholders: Map<string, string>;
     listParent?: ListParent;
+    noTranslate?: boolean; // 标记该 chunk 不翻译，原样输出
+    rawHtml?: string; // noTranslate chunk 的原始 innerHTML
 }
 
 // <li> 独立作为 chunk，重组时由 reassembler 恢复 <ul>/<ol> 结构
 const BLOCK_TAGS = new Set(['p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'li', 'blockquote']);
+
+function extractAttrs(el: Element): Record<string, string> {
+    const attrs: Record<string, string> = {};
+    if (el.attribs) {
+        for (const key of Object.keys(el.attribs)) {
+            attrs[key] = el.attribs[key];
+        }
+    }
+    return attrs;
+}
 
 function extractChunk($: CheerioAPI, $el: any): Chunk {
     const clone = $el.clone();
@@ -24,21 +37,18 @@ function extractChunk($: CheerioAPI, $el: any): Chunk {
 
     clone.find('code, pre').each((_: number, codeEl: any) => {
         const key = `NO_TRANSLATE_${placeholderId++}_`;
-        const $code = $(codeEl);
-        placeholders.set(key, $.html($code));
-        $code.replaceWith(key);
+        const codeTag = codeEl.tagName.toLowerCase();
+        const codeAttrs = Object.entries(codeEl.attribs || {})
+            .map(([k, v]) => ` ${k}="${entities.encodeXML(v)}"`)
+            .join('');
+        placeholders.set(key, `<${codeTag}${codeAttrs}>${$(codeEl).html()}</${codeTag}>`);
+        $(codeEl).replaceWith(key);
     });
 
     const text = clone.text().trim();
-    const el = $el[0];
-    const attrs: Record<string, string> = {};
-    if (el.attribs) {
-        for (const key of Object.keys(el.attribs)) {
-            attrs[key] = el.attribs[key];
-        }
-    }
+    const attrs = extractAttrs($el[0]);
 
-    const tagName = el.tagName.toLowerCase();
+    const tagName = $el[0].tagName.toLowerCase();
     const chunk: Chunk = {
         tagName,
         attrs,
@@ -74,6 +84,14 @@ export function chunkHtml(html: string): Chunk[] {
     const chunks: Chunk[] = [];
 
     function traverse(el: Element) {
+        if (el.type === 'text') {
+            const text = (el as any).data?.trim();
+            if (text) {
+                chunks.push({ tagName: 'p', attrs: {}, text, placeholders: new Map() });
+            }
+            return;
+        }
+
         if (el.type !== 'tag') {
             return;
         }
@@ -81,6 +99,14 @@ export function chunkHtml(html: string): Chunk[] {
         const tagName = el.tagName.toLowerCase();
 
         if (tagName === 'code' || tagName === 'pre') {
+            chunks.push({
+                tagName,
+                attrs: extractAttrs(el),
+                text: '',
+                placeholders: new Map(),
+                noTranslate: true,
+                rawHtml: $(el).html(),
+            });
             return;
         }
 
