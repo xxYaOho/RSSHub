@@ -88,7 +88,7 @@ async function handler(ctx): Promise<Data> {
 
     const items: DataItem[] = (feed.items || []).map((item) => ({
         title: item.title || '',
-        description: item.content || item['content:encoded'] || item.contentSnippet || item.summary || '',
+        description: item['content:encoded'] || item.content || item.contentSnippet || item.summary || '',
         link: item.link,
         pubDate: item.pubDate || item.isoDate,
         author: item.author || item.creator,

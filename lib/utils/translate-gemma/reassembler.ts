@@ -18,6 +18,10 @@ function encodeAndRestore(translated: string, placeholders: Map<string, string>)
 
 function pushChunk(parts: string[], chunk: Chunk, translated: string) {
     const attrStr = buildAttrsStr(chunk.attrs);
+    if (chunk.noTranslate) {
+        parts.push(`<${chunk.tagName}${attrStr}>${chunk.rawHtml}</${chunk.tagName}>`);
+        return;
+    }
     const body = encodeAndRestore(translated, chunk.placeholders);
     parts.push(`<${chunk.tagName}${attrStr}>${body}</${chunk.tagName}>`);
 }
@@ -64,9 +68,9 @@ export function reassembleHtml(chunks: Chunk[], translations: string[]): string 
                 flushList(parts, listBuffer, currentListParent);
                 currentListParent = chunk.listParent;
             }
-            const attrStr = buildAttrsStr(chunk.attrs);
-            const body = encodeAndRestore(translated, chunk.placeholders);
-            listBuffer.push(`<li${attrStr}>${body}</li>`);
+            const liAttrStr = buildAttrsStr(chunk.attrs);
+            const liBody = chunk.noTranslate ? chunk.rawHtml : encodeAndRestore(translated, chunk.placeholders);
+            listBuffer.push(`<li${liAttrStr}>${liBody}</li>`);
         } else {
             flushList(parts, listBuffer, currentListParent);
             currentListParent = null;

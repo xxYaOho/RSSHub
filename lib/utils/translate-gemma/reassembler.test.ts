@@ -77,4 +77,23 @@ describe('reassembleHtml', () => {
 
         expect(result).toBe('<ul><li class="active">Active</li></ul>');
     });
+
+    it('should pass through noTranslate chunks verbatim', () => {
+        const chunks: Chunk[] = [
+            { tagName: 'p', attrs: {}, text: '', placeholders: new Map(), noTranslate: true, rawHtml: 'Original content' },
+            { tagName: 'pre', attrs: { class: 'code' }, text: '', placeholders: new Map(), noTranslate: true, rawHtml: '<code>const x = 1;</code>' },
+        ];
+        const translations = ['', ''];
+        const result = reassembleHtml(chunks, translations);
+
+        expect(result).toBe('<p>Original content</p>\n<pre class="code"><code>const x = 1;</code></pre>');
+    });
+
+    it('should pass through noTranslate list items verbatim', () => {
+        const chunks: Chunk[] = [{ tagName: 'li', attrs: {}, text: '', placeholders: new Map(), listParent: { tagName: 'ul', attrs: {} }, noTranslate: true, rawHtml: 'Raw item' }];
+        const translations = [''];
+        const result = reassembleHtml(chunks, translations);
+
+        expect(result).toBe('<ul><li>Raw item</li></ul>');
+    });
 });

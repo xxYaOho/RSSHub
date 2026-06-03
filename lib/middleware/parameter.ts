@@ -516,9 +516,25 @@ const middleware: MiddlewareHandler = async (ctx, next) => {
                                 }
                                 // 2. 回退 chatgpt
                                 if (config.openai.endpoint) {
-                                    const text = convert(d);
+                                    // 保护 <pre> 和 <code> 块：替换为占位符，翻译后还原
+                                    const codeBlocks = new Map<string, string>();
+                                    let codeIdx = 0;
+                                    const protectedHtml = d
+                                        .replaceAll(/<pre[\s>][\s\S]*?<\/pre>/gi, (m) => {
+                                            codeBlocks.set(`⟨${codeIdx}⟩`, m);
+                                            return `⟨${codeIdx++}⟩`;
+                                        })
+                                        .replaceAll(/<code[\s>][\s\S]*?<\/code>/gi, (m) => {
+                                            codeBlocks.set(`⟨${codeIdx}⟩`, m);
+                                            return `⟨${codeIdx++}⟩`;
+                                        });
+                                    const text = convert(protectedHtml);
                                     const mdText = await getAiCompletion(chatgptPromptDesc, text);
-                                    return md.render(mdText);
+                                    let result = md.render(mdText);
+                                    for (const [key, original] of codeBlocks) {
+                                        result = result.replace(key, original);
+                                    }
+                                    return result;
                                 }
                                 return d;
                             });
