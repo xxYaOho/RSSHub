@@ -188,14 +188,30 @@ docker compose up -d redis
 Master 分支存放稳定代码，由 pm2 管理进程（掉线自动重启、开机自启），通过 `tsx` 直接运行 TypeScript 源码，无需 build。
 
 ```bash
-# 启动
-pm2 start "npx tsx lib/index.ts" --name rsshub \
-  --env PORT=1200 \
-  --env CACHE_TYPE=redis \
-  --env REDIS_URL=redis://localhost:6379/
+# 启动（需要先 source ~/.zshrc 加载 DEEPSEEK 环境变量）
+source ~/.zshrc && pm2 start "env \
+  PORT=1200 \
+  CACHE_TYPE=redis \
+  REDIS_URL=redis://localhost:6379/ \
+  OPENAI_API_ENDPOINT=\${DEEPSEEK_BASE_URL}/v1 \
+  OPENAI_API_KEY=\${DEEPSEEK_API_KEY} \
+  OPENAI_MODEL=deepseek-v4-flash \
+  OPENAI_INPUT_OPTION=bilingual \
+  OPENAI_MAX_TOKENS=16384 \
+  'OPENAI_PROMPT_TITLE=Translate the following title into Simplified Chinese. Reply with ONLY the translation, nothing else.' \
+  'OPENAI_PROMPT=Translate the following content into Simplified Chinese. Reply with ONLY the translation, nothing else.' \
+  OPENAI_FALLBACK_API_ENDPOINT=http://100.106.114.92:1234/v1 \
+  OPENAI_FALLBACK_API_KEY=lmstudio \
+  OPENAI_FALLBACK_MODEL=qwen3.6-35b-a3b \
+  TRANSLATE_GEMMA_ENDPOINT=http://100.106.114.92:1234/v1 \
+  TRANSLATE_GEMMA_API_KEY=lmstudio \
+  TRANSLATE_GEMMA_MODEL=translategemma-12b-it \
+  TRANSLATE_GEMMA_MAX_INPUT_TOKENS=1200 \
+  'TRANSLATE_GEMMA_PROMPT=Translate from English to Simplified Chinese.' \
+  npx tsx lib/index.ts" --name rsshub
 
 # 管理
-pm2 restart rsshub   # 重启
+pm2 restart rsshub   # 重启（注意：restart 不更新环境变量，需改用 delete + start）
 pm2 stop rsshub      # 停止
 pm2 logs rsshub      # 查看日志
 pm2 status           # 查看状态
