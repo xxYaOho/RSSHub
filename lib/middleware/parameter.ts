@@ -55,6 +55,7 @@ const callAi = async (endpoint: string, apiKey: string | undefined, model: strin
         headers: {
             Authorization: `Bearer ${apiKey}`,
         },
+        timeout: 300000,
     });
     return response.choices[0].message.content || '';
 };
@@ -344,115 +345,127 @@ const middleware: MiddlewareHandler = async (ctx, next) => {
 
         // openai
         if (ctx.req.query('chatgpt') !== undefined && config.openai.endpoint) {
-            data.item = await Promise.all(
-                data.item.map(async (item) => {
-                    try {
-                        // handle description
-                        if (config.openai.inputOption === 'description' && item.description) {
-                            const description = await cache.tryGet(`openai:description:${item.link}`, async () => {
-                                const description = convert(item.description!);
-                                const descriptionMd = await getAiCompletion(config.openai.promptDescription, description);
-                                return md.render(descriptionMd);
-                            });
-                            // add it to the description
-                            if (description !== '') {
-                                item.description = description + '<hr/><br/>' + item.description;
-                            }
-                        }
-                        // handle title
-                        else if (config.openai.inputOption === 'title' && item.title) {
-                            const title = await cache.tryGet(`openai:title:${item.link}`, async () => {
-                                const title = convert(item.title!);
-                                return await getAiCompletion(config.openai.promptTitle, title);
-                            });
-                            // replace the title
-                            if (title !== '') {
-                                item.title = title + '';
-                            }
-                        }
-                        // handle both
-                        else if (config.openai.inputOption === 'both' && item.title && item.description) {
-                            const title = await cache.tryGet(`openai:title:${item.link}`, async () => {
-                                const title = convert(item.title!);
-                                return await getAiCompletion(config.openai.promptTitle, title);
-                            });
-                            // replace the title
-                            if (title !== '') {
-                                item.title = title + '';
-                            }
-
-                            const description = await cache.tryGet(`openai:description:${item.link}`, async () => {
-                                const description = convert(item.description!);
-                                const descriptionMd = await getAiCompletion(config.openai.promptDescription, description);
-                                return md.render(descriptionMd);
-                            });
-                            // add it to the description
-                            if (description !== '') {
-                                item.description = description + '<hr/><br/>' + item.description;
-                            }
-                        }
-                        // handle bilingual
-                        else if (config.openai.inputOption === 'bilingual') {
-                            if (item.title) {
-                                const title = await cache.tryGet(`openai:title:${item.link}`, async () => {
-                                    let t = convert(item.title!);
-                                    t = t.replaceAll(/\[https?:\/\/[^\]]+\]/g, '');
-                                    return await getAiCompletion(config.openai.promptTitle, t);
+            // 分批处理 item，避免并发请求过多压垮翻译服务器
+            const CHATGPT_CONCURRENCY = 2;
+            for (let idx = 0; idx < data.item.length; idx += CHATGPT_CONCURRENCY) {
+                const batch = data.item.slice(idx, idx + CHATGPT_CONCURRENCY);
+                // oxlint-disable-next-line no-await-in-loop -- 故意分批串行处理，避免压垮 LLM 服务
+                await Promise.all(
+                    batch.map(async (item) => {
+                        try {
+                            // handle description
+                            if (config.openai.inputOption === 'description' && item.description) {
+                                const description = await cache.tryGet(`openai:description:${item.link}`, async () => {
+                                    const description = convert(item.description!);
+                                    const descriptionMd = await getAiCompletion(config.openai.promptDescription, description);
+                                    return md.render(descriptionMd);
                                 });
+                                // add it to the description
+                                if (description !== '') {
+                                    item.description = description + '<hr/><br/>' + item.description;
+                                }
+                            }
+                            // handle title
+                            else if (config.openai.inputOption === 'title' && item.title) {
+                                const title = await cache.tryGet(`openai:title:${item.link}`, async () => {
+                                    const title = convert(item.title!);
+                                    return await getAiCompletion(config.openai.promptTitle, title);
+                                });
+                                // replace the title
                                 if (title !== '') {
+                                    item.title = title + '';
+                                }
+                            }
+                            // handle both
+                            else if (config.openai.inputOption === 'both' && item.title && item.description) {
+                                const title = await cache.tryGet(`openai:title:${item.link}`, async () => {
+                                    const title = convert(item.title!);
+                                    return await getAiCompletion(config.openai.promptTitle, title);
+                                });
+                                // replace the title
+                                if (title !== '') {
+                                    item.title = title + '';
+                                }
+
+                                const description = await cache.tryGet(`openai:description:${item.link}`, async () => {
+                                    const description = convert(item.description!);
+                                    const descriptionMd = await getAiCompletion(config.openai.promptDescription, description);
+                                    return md.render(descriptionMd);
+                                });
+                                // add it to the description
+                                if (description !== '') {
+                                    item.description = description + '<hr/><br/>' + item.description;
+                                }
+                            }
+                            // handle bilingual
+                            else if (config.openai.inputOption === 'bilingual') {
+                                if (item.title) {
+                                    const title = await cache.tryGet(`openai:title:${item.link}`, async () => {
+                                        let t = convert(item.title!);
+                                        t = t.replaceAll(/\[https?:\/\/[^\]]+\]/g, '');
+                                        return await getAiCompletion(config.openai.promptTitle, t);
+                                    });
+                                    if (title !== '') {
+                                        item.title = title + ' -- ' + item.title;
+                                    }
+                                }
+                                if (item.description) {
+                                    const description = await cache.tryGet(`openai:description:${item.link}`, async () => {
+                                        let d = convert(item.description!);
+                                        d = d.replaceAll(/\[https?:\/\/[^\]]+\]/g, '');
+                                        const descriptionMd = await getAiCompletion(config.openai.promptDescription, d);
+                                        return md.render(descriptionMd);
+                                    });
+                                    if (description !== '') {
+                                        item.description = description + '<hr/>' + item.description;
+                                    }
+                                }
+                            }
+                        } catch {
+                            // when openai failed, return default content and not write cache
+                        }
+                        return item;
+                    })
+                );
+            }
+        }
+
+        // translategemma
+        if (ctx.req.query('translategemma') !== undefined && config.translategemma.endpoint) {
+            // 分批处理 item，避免并发请求过多压垮翻译服务器
+            const TG_CONCURRENCY = 2;
+            for (let idx = 0; idx < data.item.length; idx += TG_CONCURRENCY) {
+                const batch = data.item.slice(idx, idx + TG_CONCURRENCY);
+                // oxlint-disable-next-line no-await-in-loop -- 故意分批串行处理，避免压垮 LLM 服务
+                await Promise.all(
+                    batch.map(async (item) => {
+                        const cacheKey = item.link || item.guid || '';
+                        try {
+                            if (item.title) {
+                                const title = await cache.tryGet(`translategemma:title:v2:${cacheKey}`, async () => {
+                                    const t = convert(item.title!);
+                                    return await translateChunk(t);
+                                });
+                                if (title !== '' && title !== item.title) {
                                     item.title = title + ' -- ' + item.title;
                                 }
                             }
                             if (item.description) {
-                                const description = await cache.tryGet(`openai:description:${item.link}`, async () => {
-                                    let d = convert(item.description!);
-                                    d = d.replaceAll(/\[https?:\/\/[^\]]+\]/g, '');
-                                    const descriptionMd = await getAiCompletion(config.openai.promptDescription, d);
-                                    return md.render(descriptionMd);
+                                const description = await cache.tryGet(`translategemma:description:v2:${cacheKey}`, async () => {
+                                    const d = item.description!;
+                                    return await translateHtml(d);
                                 });
                                 if (description !== '') {
                                     item.description = description + '<hr/>' + item.description;
                                 }
                             }
+                        } catch (error) {
+                            logger.warn(`[translategemma] Translation failed for ${cacheKey}:`, error);
                         }
-                    } catch {
-                        // when openai failed, return default content and not write cache
-                    }
-                    return item;
-                })
-            );
-        }
-
-        // translategemma
-        if (ctx.req.query('translategemma') !== undefined && config.translategemma.endpoint) {
-            data.item = await Promise.all(
-                data.item.map(async (item) => {
-                    const cacheKey = item.link || item.guid || '';
-                    try {
-                        if (item.title) {
-                            const title = await cache.tryGet(`translategemma:title:v2:${cacheKey}`, async () => {
-                                const t = convert(item.title!);
-                                return await translateChunk(t);
-                            });
-                            if (title !== '' && title !== item.title) {
-                                item.title = title + ' -- ' + item.title;
-                            }
-                        }
-                        if (item.description) {
-                            const description = await cache.tryGet(`translategemma:description:v2:${cacheKey}`, async () => {
-                                const d = item.description!;
-                                return await translateHtml(d);
-                            });
-                            if (description !== '') {
-                                item.description = description + '<hr/>' + item.description;
-                            }
-                        }
-                    } catch (error) {
-                        logger.warn(`[translategemma] Translation failed for ${cacheKey}:`, error);
-                    }
-                    return item;
-                })
-            );
+                        return item;
+                    })
+                );
+            }
         }
 
         // autots — 智能翻译（translategemma 优先，chatgpt 回退）
@@ -476,78 +489,84 @@ const middleware: MiddlewareHandler = async (ctx, next) => {
             const chatgptPromptTitle = `Translate the following title to ${langName}. Reply with ONLY the translation, nothing else.`;
             const chatgptPromptDesc = `Translate the following content to ${langName}. Reply with ONLY the translation, nothing else.`;
 
-            data.item = await Promise.all(
-                data.item.map(async (item) => {
-                    const cacheKey = item.link || item.guid || '';
-                    try {
-                        // title
-                        if (item.title) {
-                            const title = await cache.tryGet(`autots:title:${langCode}:${cacheKey}`, async () => {
-                                const t = convert(item.title!);
-                                // 1. 尝试 translategemma
-                                if (config.translategemma.endpoint) {
-                                    try {
-                                        return await translateChunk(t, gemmaPrompt);
-                                    } catch {
-                                        // 回退 chatgpt
+            // 分批处理 item，避免并发请求过多压垮翻译服务器
+            const AUTOTS_CONCURRENCY = 2;
+            for (let idx = 0; idx < data.item.length; idx += AUTOTS_CONCURRENCY) {
+                const batch = data.item.slice(idx, idx + AUTOTS_CONCURRENCY);
+                // oxlint-disable-next-line no-await-in-loop -- 故意分批串行处理，避免压垮 LLM 服务
+                await Promise.all(
+                    batch.map(async (item) => {
+                        const cacheKey = item.link || item.guid || '';
+                        try {
+                            // title
+                            if (item.title) {
+                                const title = await cache.tryGet(`autots:title:${langCode}:${cacheKey}`, async () => {
+                                    const t = convert(item.title!);
+                                    // 1. 尝试 translategemma
+                                    if (config.translategemma.endpoint) {
+                                        try {
+                                            return await translateChunk(t, gemmaPrompt);
+                                        } catch {
+                                            // 回退 chatgpt
+                                        }
                                     }
+                                    // 2. 回退 chatgpt
+                                    if (config.openai.endpoint) {
+                                        return await getAiCompletion(chatgptPromptTitle, t);
+                                    }
+                                    return t;
+                                });
+                                if (title !== '' && title !== item.title) {
+                                    item.title = title + ' -- ' + item.title;
                                 }
-                                // 2. 回退 chatgpt
-                                if (config.openai.endpoint) {
-                                    return await getAiCompletion(chatgptPromptTitle, t);
-                                }
-                                return t;
-                            });
-                            if (title !== '' && title !== item.title) {
-                                item.title = title + ' -- ' + item.title;
                             }
-                        }
-                        // description
-                        if (item.description) {
-                            const description = await cache.tryGet(`autots:description:${langCode}:${cacheKey}`, async () => {
-                                const d = item.description!;
-                                // 1. 尝试 translategemma
-                                if (config.translategemma.endpoint) {
-                                    try {
-                                        return await translateHtml(d, gemmaPrompt);
-                                    } catch {
-                                        // 回退 chatgpt
+                            // description
+                            if (item.description) {
+                                const description = await cache.tryGet(`autots:description:${langCode}:${cacheKey}`, async () => {
+                                    const d = item.description!;
+                                    // 1. 尝试 translategemma
+                                    if (config.translategemma.endpoint) {
+                                        try {
+                                            return await translateHtml(d, gemmaPrompt);
+                                        } catch {
+                                            // 回退 chatgpt
+                                        }
                                     }
-                                }
-                                // 2. 回退 chatgpt
-                                if (config.openai.endpoint) {
-                                    // 保护 <pre> 和 <code> 块：替换为占位符，翻译后还原
-                                    const codeBlocks = new Map<string, string>();
-                                    let codeIdx = 0;
-                                    const protectedHtml = d
-                                        .replaceAll(/<pre[\s>][\s\S]*?<\/pre>/gi, (m) => {
-                                            codeBlocks.set(`⟨${codeIdx}⟩`, m);
-                                            return `⟨${codeIdx++}⟩`;
-                                        })
-                                        .replaceAll(/<code[\s>][\s\S]*?<\/code>/gi, (m) => {
-                                            codeBlocks.set(`⟨${codeIdx}⟩`, m);
-                                            return `⟨${codeIdx++}⟩`;
-                                        });
-                                    const text = convert(protectedHtml);
-                                    const mdText = await getAiCompletion(chatgptPromptDesc, text);
-                                    let result = md.render(mdText);
-                                    for (const [key, original] of codeBlocks) {
-                                        result = result.replace(key, original);
+                                    // 2. 回退 chatgpt
+                                    if (config.openai.endpoint) {
+                                        // 保护 <pre> 和 <code> 块：替换为占位符，翻译后还原
+                                        const codeBlocks = new Map<string, string>();
+                                        let codeIdx = 0;
+                                        const protectedHtml = d
+                                            .replaceAll(/<pre[\s>][\s\S]*?<\/pre>/gi, (m) => {
+                                                codeBlocks.set(`⟨${codeIdx}⟩`, m);
+                                                return `⟨${codeIdx++}⟩`;
+                                            })
+                                            .replaceAll(/<code[\s>][\s\S]*?<\/code>/gi, (m) => {
+                                                codeBlocks.set(`⟨${codeIdx}⟩`, m);
+                                                return `⟨${codeIdx++}⟩`;
+                                            });
+                                        const text = convert(protectedHtml);
+                                        const mdText = await getAiCompletion(chatgptPromptDesc, text);
+                                        let result = md.render(mdText);
+                                        for (const [key, original] of codeBlocks) {
+                                            result = result.replace(key, original);
+                                        }
+                                        return result;
                                     }
-                                    return result;
+                                    return d;
+                                });
+                                if (description !== '') {
+                                    item.description = description + '<hr/>' + item.description;
                                 }
-                                return d;
-                            });
-                            if (description !== '') {
-                                item.description = description + '<hr/>' + item.description;
                             }
+                        } catch (error) {
+                            logger.warn(`[autots] Translation failed for ${cacheKey}:`, error);
                         }
-                    } catch (error) {
-                        logger.warn(`[autots] Translation failed for ${cacheKey}:`, error);
-                    }
-                    return item;
-                })
-            );
+                        return item;
+                    })
+                );
+            }
         }
 
         // scihub

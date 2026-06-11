@@ -38,6 +38,7 @@ if (config.enableCluster) {
             port,
             serverOptions: {
                 maxHeaderSize: 1024 * 32,
+                requestTimeout: 0, // 禁用 server 级超时，翻译等长耗时操作由各模块自行控制 timeout
             },
         });
     }
@@ -56,6 +57,7 @@ if (config.enableCluster) {
         port,
         serverOptions: {
             maxHeaderSize: 1024 * 32,
+            requestTimeout: 0, // 禁用 server 级超时，翻译等长耗时操作由各模块自行控制 timeout
         },
     });
 }
