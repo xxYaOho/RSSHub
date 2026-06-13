@@ -491,6 +491,7 @@ const middleware: MiddlewareHandler = async (ctx, next) => {
 
             // 分批处理 item，避免并发请求过多压垮翻译服务器
             const AUTOTS_CONCURRENCY = 2;
+            const TRANSLATION_CACHE_TTL = 4 * 60 * 60; // 翻译结果缓存 4 小时，避免与 Reeder 轮询间隔（1h）同步导致频繁 LLM 调用
             for (let idx = 0; idx < data.item.length; idx += AUTOTS_CONCURRENCY) {
                 const batch = data.item.slice(idx, idx + AUTOTS_CONCURRENCY);
                 // oxlint-disable-next-line no-await-in-loop -- 故意分批串行处理，避免压垮 LLM 服务
@@ -500,62 +501,70 @@ const middleware: MiddlewareHandler = async (ctx, next) => {
                         try {
                             // title
                             if (item.title) {
-                                const title = await cache.tryGet(`autots:title:${langCode}:${cacheKey}`, async () => {
-                                    const t = convert(item.title!);
-                                    // 1. 尝试 translategemma
-                                    if (config.translategemma.endpoint) {
-                                        try {
-                                            return await translateChunk(t, gemmaPrompt);
-                                        } catch {
-                                            // 回退 chatgpt
+                                const title = await cache.tryGet(
+                                    `autots:title:${langCode}:${cacheKey}`,
+                                    async () => {
+                                        const t = convert(item.title!);
+                                        // 1. 尝试 translategemma
+                                        if (config.translategemma.endpoint) {
+                                            try {
+                                                return await translateChunk(t, gemmaPrompt);
+                                            } catch {
+                                                // 回退 chatgpt
+                                            }
                                         }
-                                    }
-                                    // 2. 回退 chatgpt
-                                    if (config.openai.endpoint) {
-                                        return await getAiCompletion(chatgptPromptTitle, t);
-                                    }
-                                    return t;
-                                });
+                                        // 2. 回退 chatgpt
+                                        if (config.openai.endpoint) {
+                                            return await getAiCompletion(chatgptPromptTitle, t);
+                                        }
+                                        return t;
+                                    },
+                                    TRANSLATION_CACHE_TTL
+                                );
                                 if (title !== '' && title !== item.title) {
                                     item.title = title + ' -- ' + item.title;
                                 }
                             }
                             // description
                             if (item.description) {
-                                const description = await cache.tryGet(`autots:description:${langCode}:${cacheKey}`, async () => {
-                                    const d = item.description!;
-                                    // 1. 尝试 translategemma
-                                    if (config.translategemma.endpoint) {
-                                        try {
-                                            return await translateHtml(d, gemmaPrompt);
-                                        } catch {
-                                            // 回退 chatgpt
+                                const description = await cache.tryGet(
+                                    `autots:description:${langCode}:${cacheKey}`,
+                                    async () => {
+                                        const d = item.description!;
+                                        // 1. 尝试 translategemma
+                                        if (config.translategemma.endpoint) {
+                                            try {
+                                                return await translateHtml(d, gemmaPrompt);
+                                            } catch {
+                                                // 回退 chatgpt
+                                            }
                                         }
-                                    }
-                                    // 2. 回退 chatgpt
-                                    if (config.openai.endpoint) {
-                                        // 保护 <pre> 和 <code> 块：替换为占位符，翻译后还原
-                                        const codeBlocks = new Map<string, string>();
-                                        let codeIdx = 0;
-                                        const protectedHtml = d
-                                            .replaceAll(/<pre[\s>][\s\S]*?<\/pre>/gi, (m) => {
-                                                codeBlocks.set(`⟨${codeIdx}⟩`, m);
-                                                return `⟨${codeIdx++}⟩`;
-                                            })
-                                            .replaceAll(/<code[\s>][\s\S]*?<\/code>/gi, (m) => {
-                                                codeBlocks.set(`⟨${codeIdx}⟩`, m);
-                                                return `⟨${codeIdx++}⟩`;
-                                            });
-                                        const text = convert(protectedHtml);
-                                        const mdText = await getAiCompletion(chatgptPromptDesc, text);
-                                        let result = md.render(mdText);
-                                        for (const [key, original] of codeBlocks) {
-                                            result = result.replace(key, original);
+                                        // 2. 回退 chatgpt
+                                        if (config.openai.endpoint) {
+                                            // 保护 <pre> 和 <code> 块：替换为占位符，翻译后还原
+                                            const codeBlocks = new Map<string, string>();
+                                            let codeIdx = 0;
+                                            const protectedHtml = d
+                                                .replaceAll(/<pre[\s>][\s\S]*?<\/pre>/gi, (m) => {
+                                                    codeBlocks.set(`⟨${codeIdx}⟩`, m);
+                                                    return `⟨${codeIdx++}⟩`;
+                                                })
+                                                .replaceAll(/<code[\s>][\s\S]*?<\/code>/gi, (m) => {
+                                                    codeBlocks.set(`⟨${codeIdx}⟩`, m);
+                                                    return `⟨${codeIdx++}⟩`;
+                                                });
+                                            const text = convert(protectedHtml);
+                                            const mdText = await getAiCompletion(chatgptPromptDesc, text);
+                                            let result = md.render(mdText);
+                                            for (const [key, original] of codeBlocks) {
+                                                result = result.replace(key, original);
+                                            }
+                                            return result;
                                         }
-                                        return result;
-                                    }
-                                    return d;
-                                });
+                                        return d;
+                                    },
+                                    TRANSLATION_CACHE_TTL
+                                );
                                 if (description !== '') {
                                     item.description = description + '<hr/>' + item.description;
                                 }
