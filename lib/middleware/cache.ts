@@ -10,6 +10,7 @@ const bypassList = new Set(['/', '/robots.txt', '/logo.png', '/favicon.ico']);
 // only give cache string, as the `!` condition tricky
 // XXH64 is used to shrink key size
 // plz, write these tips in comments!
+const getItemKey = (i: { guid?: string; link?: string }) => i.guid || i.link || '';
 const middleware: MiddlewareHandler = async (ctx, next) => {
     if (!cacheModule.status.available || bypassList.has(ctx.req.path)) {
         await next();
@@ -23,10 +24,14 @@ const middleware: MiddlewareHandler = async (ctx, next) => {
     let extra = '';
     if (requestPath === '/proxy/rss') {
         const url = ctx.req.query('url') || '';
-        const chatgpt = ctx.req.query('chatgpt') ? ':chatgpt' : '';
-        const autots = ctx.req.query('autots') ? `:autots=${ctx.req.query('autots')}` : '';
-        extra = `:url=${url}${chatgpt}${autots}`;
+        extra = `:url=${url}`;
     }
+    // 翻译参数对所有路由生效，确保带翻译和不带翻译的请求使用独立的 controlKey 和缓存
+    const chatgpt = ctx.req.query('chatgpt') ? ':chatgpt' : '';
+    const autotsParam = ctx.req.query('autots');
+    const autots = autotsParam === undefined ? '' : `:autots=${autotsParam || 'cn'}`;
+    const translategemma = ctx.req.query('translategemma') ? ':translategemma' : '';
+    extra += `${chatgpt}${autots}${translategemma}`;
 
     const { h64ToString } = await xxhash();
     const key = 'rsshub:koa-redis-cache:' + h64ToString(requestPath + format + limit + extra);
@@ -78,7 +83,20 @@ const middleware: MiddlewareHandler = async (ctx, next) => {
 
     const data: Data = ctx.get('data');
     if (ctx.res.headers.get('Cache-Control') !== 'no-cache' && data) {
-        data.lastBuildDate = new Date().toUTCString();
+        // 比较新旧 item 集合：若内容未变，保留旧的 lastBuildDate，避免 RSS 阅读器误报更新
+        const oldValue = await cacheModule.globalCache.get(key);
+        if (oldValue && data.item?.length) {
+            try {
+                const oldData = JSON.parse(oldValue);
+                const oldIds = [...new Set(oldData.item?.map(getItemKey).filter(Boolean) as string[])].toSorted();
+                const newIds = [...new Set(data.item.map(getItemKey).filter(Boolean))].toSorted();
+                data.lastBuildDate = oldIds.length === newIds.length && oldIds.every((id, i) => id === newIds[i]) ? oldData.lastBuildDate : new Date().toUTCString();
+            } catch {
+                data.lastBuildDate = new Date().toUTCString();
+            }
+        } else {
+            data.lastBuildDate = new Date().toUTCString();
+        }
         ctx.set('data', data);
         const body = JSON.stringify(data);
         await cacheModule.globalCache.set(key, body, config.cache.routeExpire);
