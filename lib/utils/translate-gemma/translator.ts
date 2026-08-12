@@ -13,7 +13,7 @@ export async function translateChunk(text: string, customPrompt?: string): Promi
         messages: [
             {
                 role: 'user',
-                content: `${customPrompt || prompt}\n\n${text}`,
+                content: `${customPrompt || prompt}\n\n\n${text}`,
             },
         ],
     };
