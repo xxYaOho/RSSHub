@@ -274,11 +274,11 @@ PORT=1300 screen -dmS rsshub-dev env \
 
 #### 翻译路由参数
 
-| 参数              | 说明                                 | 示例                                        |
-| ----------------- | ------------------------------------ | ------------------------------------------- |
-| `?chatgpt`        | DeepSeek 整篇翻译                    | `/proxy/rss?url=...&chatgpt&limit=5`        |
-| `?translategemma` | TranslateGemma 分段翻译              | `/proxy/rss?url=...&translategemma&limit=1` |
-| `?autots`         | 智能翻译（gemma 优先，chatgpt 回退） | `/proxy/rss?url=...&autots=jp&limit=1`      |
+| 参数              | 说明                                                        | 示例                                        |
+| ----------------- | ----------------------------------------------------------- | ------------------------------------------- |
+| `?chatgpt`        | DeepSeek 整篇翻译                                           | `/proxy/rss?url=...&chatgpt&limit=5`        |
+| `?translategemma` | TranslateGemma 分段翻译（默认英译中，`=jp` 等指定目标语言） | `/proxy/rss?url=...&translategemma&limit=1` |
+| `?autots`         | 智能翻译（gemma 优先，chatgpt 回退）                        | `/proxy/rss?url=...&autots=jp&limit=1`      |
 
 `?autots` 支持语言代码：`cn/zh` (中文), `jp/ja` (日文), `en` (英文), `ko` (韩文), `fr` (法文), `de` (德文)。不传值默认为 `cn`。
 
@@ -319,15 +319,8 @@ PORT=1300 CACHE_TYPE=redis REDIS_URL=redis://localhost:6379/ pnpm dev
 
 ## Known Issues
 
-### Cache key 未包含翻译参数
+### ~~Cache key 未包含翻译参数~~（已修复，commit 532dd9886）
 
-`lib/middleware/cache.ts` 的缓存 key 默认只计算 `requestPath + format + limit`，**不包含 `autots`/`translategemma`/`chatgpt` 等翻译参数**。
+`lib/middleware/cache.ts` 的缓存 key 已包含 `chatgpt`/`autots`/`translategemma` 及语言代码（如 `:autots=jp`、`:translategemma=jp`），带翻译与不带翻译的请求使用独立的 `controlKey`，不再互相阻塞或污染缓存。
 
-后果：
-
-- 带翻译参数的请求和不带翻译参数的请求共享同一个 `controlKey`，翻译期间（可能 10-20 分钟）同 path 的无参请求会被阻塞 60 秒后返回 503
-- 缓存内容可能交叉污染（无参请求命中翻译后的缓存）
-
-**例外**：`/proxy/rss` 路由已将 `url` 和翻译参数纳入 cache key，不受此问题影响。
-
-临时规避（其他路由）：使用翻译参数时，将 `limit` 调小（如 `limit=1`），减少翻译总量。
+注意：`translategemma` 语言代码纳入 controlKey 后，旧缓存 key 的哈希变化，升级后首次请求会重新生成，属正常现象。

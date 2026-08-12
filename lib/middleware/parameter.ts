@@ -71,6 +71,30 @@ const getAiCompletion = async (prompt: string, text: string) => {
     }
 };
 
+// 语言代码 → 英文语言名；未指定或非法时返回 fallback
+// autots 无值默认 cn；translategemma 无值不指定（用服务端默认 prompt）
+const LANG_MAP: Record<string, string> = {
+    cn: 'Simplified Chinese',
+    zh: 'Simplified Chinese',
+    jp: 'Japanese',
+    ja: 'Japanese',
+    en: 'English',
+    ko: 'Korean',
+    fr: 'French',
+    de: 'German',
+};
+
+const resolveLang = (raw: unknown, fallback?: { code: string; name: string }): { code: string; name: string } | undefined => {
+    if (typeof raw === 'string' && raw) {
+        const code = /^[a-z]{2}(?:-[a-z]{2})?$/.test(raw) ? raw : '';
+        const name = LANG_MAP[code];
+        if (name) {
+            return { code, name };
+        }
+    }
+    return fallback;
+};
+
 const getAuthorString = (item) => {
     let author = '';
     if (item.author) {
@@ -429,8 +453,11 @@ const middleware: MiddlewareHandler = async (ctx, next) => {
             }
         }
 
-        // translategemma
+        // translategemma（支持语言代码：?translategemma=jp；不指定时用服务端默认 prompt）
         if (ctx.req.query('translategemma') !== undefined && config.translategemma.endpoint) {
+            const lang = resolveLang(ctx.req.query('translategemma'));
+            const langSuffix = lang ? `:${lang.code}` : '';
+            const gemmaPrompt = lang ? `Translate to ${lang.name}.` : undefined;
             // 分批处理 item，避免并发请求过多压垮翻译服务器
             const TG_CONCURRENCY = 2;
             for (let idx = 0; idx < data.item.length; idx += TG_CONCURRENCY) {
@@ -441,18 +468,18 @@ const middleware: MiddlewareHandler = async (ctx, next) => {
                         const cacheKey = item.link || item.guid || '';
                         try {
                             if (item.title) {
-                                const title = await cache.tryGet(`translategemma:title:v2:${cacheKey}`, async () => {
+                                const title = await cache.tryGet(`translategemma:title:v2${langSuffix}:${cacheKey}`, async () => {
                                     const t = convert(item.title!);
-                                    return await translateChunk(t);
+                                    return await translateChunk(t, gemmaPrompt);
                                 });
                                 if (title !== '' && title !== item.title) {
                                     item.title = title + ' -- ' + item.title;
                                 }
                             }
                             if (item.description) {
-                                const description = await cache.tryGet(`translategemma:description:v2:${cacheKey}`, async () => {
+                                const description = await cache.tryGet(`translategemma:description:v2${langSuffix}:${cacheKey}`, async () => {
                                     const d = item.description!;
-                                    return await translateHtml(d);
+                                    return await translateHtml(d, gemmaPrompt);
                                 });
                                 if (description !== '') {
                                     item.description = description + '<hr/>' + item.description;
@@ -470,20 +497,9 @@ const middleware: MiddlewareHandler = async (ctx, next) => {
         // autots — 智能翻译（translategemma 优先，chatgpt 回退）
         const autotsParam = ctx.req.query('autots');
         if (autotsParam !== undefined) {
-            const rawLangCode = typeof autotsParam === 'string' && autotsParam ? autotsParam : 'cn';
-            const SAFE_LANG_PATTERN = /^[a-z]{2}(-[a-z]{2})?$/;
-            const langCode = SAFE_LANG_PATTERN.test(rawLangCode) ? rawLangCode : 'cn';
-            const langMap: Record<string, string> = {
-                cn: 'Simplified Chinese',
-                zh: 'Simplified Chinese',
-                jp: 'Japanese',
-                ja: 'Japanese',
-                en: 'English',
-                ko: 'Korean',
-                fr: 'French',
-                de: 'German',
-            };
-            const langName = langMap[langCode] || 'Simplified Chinese';
+            const lang = resolveLang(autotsParam, { code: 'cn', name: 'Simplified Chinese' })!;
+            const langCode = lang.code;
+            const langName = lang.name;
             const gemmaPrompt = `Translate to ${langName}.`;
             const chatgptPromptTitle = `Translate the following title to ${langName}. Reply with ONLY the translation, nothing else.`;
             const chatgptPromptDesc = `Translate the following content to ${langName}. Reply with ONLY the translation, nothing else.`;
@@ -556,7 +572,7 @@ const middleware: MiddlewareHandler = async (ctx, next) => {
                                             const mdText = await getAiCompletion(chatgptPromptDesc, text);
                                             let result = md.render(mdText);
                                             for (const [key, original] of codeBlocks) {
-                                                result = result.replace(key, original);
+                                                result = result.split(key).join(original);
                                             }
                                             return result;
                                         }

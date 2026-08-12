@@ -20,6 +20,7 @@ export async function translateHtml(html: string, customPrompt?: string): Promis
 
     const startTime = Date.now();
     const translations: string[] = [];
+    let failedChunks = 0;
 
     for (let i = 0; i < chunks.length; i += CONCURRENCY_LIMIT) {
         const batch = chunks.slice(i, i + CONCURRENCY_LIMIT);
@@ -37,6 +38,7 @@ export async function translateHtml(html: string, customPrompt?: string): Promis
                     } catch (error) {
                         if (attempt === MAX_RETRIES) {
                             logger.error(`[translategemma] Chunk ${globalIndex} failed after ${MAX_RETRIES + 1} attempts:`, error);
+                            failedChunks++;
                             return chunk.text;
                         }
                         logger.warn(`[translategemma] Chunk ${globalIndex} attempt ${attempt + 1} failed, retrying...`);
@@ -48,6 +50,11 @@ export async function translateHtml(html: string, customPrompt?: string): Promis
             })
         );
         translations.push(...batchResults);
+    }
+
+    if (failedChunks > 0) {
+        // 有 chunk 翻译失败：抛异常让调用方感知（autots 可回退 chatgpt），而不是静默返回原文
+        throw new Error(`[translategemma] ${failedChunks}/${chunks.length} chunks failed to translate`);
     }
 
     const duration = Date.now() - startTime;

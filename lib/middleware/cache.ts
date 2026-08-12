@@ -30,7 +30,8 @@ const middleware: MiddlewareHandler = async (ctx, next) => {
     const chatgpt = ctx.req.query('chatgpt') ? ':chatgpt' : '';
     const autotsParam = ctx.req.query('autots');
     const autots = autotsParam === undefined ? '' : `:autots=${autotsParam || 'cn'}`;
-    const translategemma = ctx.req.query('translategemma') ? ':translategemma' : '';
+    const tgParam = ctx.req.query('translategemma');
+    const translategemma = tgParam === undefined ? '' : `:translategemma=${tgParam || ''}`;
     extra += `${chatgpt}${autots}${translategemma}`;
 
     const { h64ToString } = await xxhash();
@@ -88,8 +89,8 @@ const middleware: MiddlewareHandler = async (ctx, next) => {
         if (oldValue && data.item?.length) {
             try {
                 const oldData = JSON.parse(oldValue);
-                const oldIds = [...new Set(oldData.item?.map(getItemKey).filter(Boolean) as string[])].toSorted();
-                const newIds = [...new Set(data.item.map(getItemKey).filter(Boolean))].toSorted();
+                const oldIds = [...new Set(oldData.item?.map(getItemKey).filter(Boolean) as string[])].toSorted((a, b) => a.localeCompare(b));
+                const newIds = [...new Set(data.item.map(getItemKey).filter(Boolean))].toSorted((a, b) => a.localeCompare(b));
                 data.lastBuildDate = oldIds.length === newIds.length && oldIds.every((id, i) => id === newIds[i]) ? oldData.lastBuildDate : new Date().toUTCString();
             } catch {
                 data.lastBuildDate = new Date().toUTCString();
