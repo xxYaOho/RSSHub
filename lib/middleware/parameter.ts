@@ -71,25 +71,35 @@ const getAiCompletion = async (prompt: string, text: string) => {
     }
 };
 
-// 语言代码 → 英文语言名；未指定或非法时返回 fallback
+// 语言代码 → 短代码；未指定或非法时返回 fallback
 // autots 无值默认 cn；translategemma 无值不指定（用服务端默认 prompt）
+// gemma prompt 用短代码（Translate to CN），chatgpt prompt 用全名（LANG_FULL_NAMES）
 const LANG_MAP: Record<string, string> = {
-    cn: 'Simplified Chinese',
-    zh: 'Simplified Chinese',
-    jp: 'Japanese',
-    ja: 'Japanese',
-    en: 'English',
-    ko: 'Korean',
-    fr: 'French',
-    de: 'German',
+    cn: 'CN',
+    zh: 'CN',
+    jp: 'JP',
+    ja: 'JP',
+    en: 'EN',
+    ko: 'KO',
+    fr: 'FR',
+    de: 'DE',
 };
 
-const resolveLang = (raw: unknown, fallback?: { code: string; name: string }): { code: string; name: string } | undefined => {
+const LANG_FULL_NAMES: Record<string, string> = {
+    CN: 'Simplified Chinese',
+    JP: 'Japanese',
+    EN: 'English',
+    KO: 'Korean',
+    FR: 'French',
+    DE: 'German',
+};
+
+const resolveLang = (raw: unknown, fallback?: { code: string; lang: string }): { code: string; lang: string } | undefined => {
     if (typeof raw === 'string' && raw) {
         const code = /^[a-z]{2}(?:-[a-z]{2})?$/.test(raw) ? raw : '';
-        const name = LANG_MAP[code];
-        if (name) {
-            return { code, name };
+        const lang = LANG_MAP[code];
+        if (lang) {
+            return { code, lang };
         }
     }
     return fallback;
@@ -457,7 +467,7 @@ const middleware: MiddlewareHandler = async (ctx, next) => {
         if (ctx.req.query('translategemma') !== undefined && config.translategemma.endpoint) {
             const lang = resolveLang(ctx.req.query('translategemma'));
             const langSuffix = lang ? `:${lang.code}` : '';
-            const gemmaPrompt = lang ? `Translate to ${lang.name}.` : undefined;
+            const gemmaPrompt = lang ? `Translate to ${lang.lang}` : undefined;
             // 分批处理 item，避免并发请求过多压垮翻译服务器
             const TG_CONCURRENCY = 2;
             for (let idx = 0; idx < data.item.length; idx += TG_CONCURRENCY) {
@@ -497,10 +507,10 @@ const middleware: MiddlewareHandler = async (ctx, next) => {
         // autots — 智能翻译（translategemma 优先，chatgpt 回退）
         const autotsParam = ctx.req.query('autots');
         if (autotsParam !== undefined) {
-            const lang = resolveLang(autotsParam, { code: 'cn', name: 'Simplified Chinese' })!;
+            const lang = resolveLang(autotsParam, { code: 'cn', lang: 'CN' })!;
             const langCode = lang.code;
-            const langName = lang.name;
-            const gemmaPrompt = `Translate to ${langName}.`;
+            const langName = LANG_FULL_NAMES[lang.lang] || 'Simplified Chinese'; // chatgpt 回退用全名
+            const gemmaPrompt = `Translate to ${lang.lang}`;
             const chatgptPromptTitle = `Translate the following title to ${langName}. Reply with ONLY the translation, nothing else.`;
             const chatgptPromptDesc = `Translate the following content to ${langName}. Reply with ONLY the translation, nothing else.`;
 
