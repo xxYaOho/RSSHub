@@ -463,11 +463,11 @@ const middleware: MiddlewareHandler = async (ctx, next) => {
             }
         }
 
-        // translategemma（支持语言代码：?translategemma=jp；不指定时用服务端默认 prompt）
+        // translategemma（支持语言代码：?translategemma=jp；无值默认 cn）
         if (ctx.req.query('translategemma') !== undefined && config.translategemma.endpoint) {
-            const lang = resolveLang(ctx.req.query('translategemma'));
-            const langSuffix = lang ? `:${lang.code}` : '';
-            const gemmaPrompt = lang ? `Translate to ${lang.lang}` : undefined;
+            const lang = resolveLang(ctx.req.query('translategemma'), { code: 'cn', lang: 'CN' })!;
+            const langSuffix = `:${lang.code}`;
+            const gemmaPrompt = `Translate to ${lang.lang}`;
             // 分批处理 item，避免并发请求过多压垮翻译服务器
             const TG_CONCURRENCY = 2;
             for (let idx = 0; idx < data.item.length; idx += TG_CONCURRENCY) {
