@@ -32,7 +32,10 @@ const middleware: MiddlewareHandler = async (ctx, next) => {
     const autots = autotsParam === undefined ? '' : `:autots=${autotsParam || 'cn'}`;
     const tgParam = ctx.req.query('translategemma');
     const translategemma = tgParam === undefined ? '' : `:translategemma=${tgParam || ''}`;
-    extra += `${chatgpt}${autots}${translategemma}`;
+    const lgParam = ctx.req.query('llmgemma');
+    const llmgemma = lgParam === undefined ? '' : `:llmgemma=${lgParam || 'cn'}`;
+    const translatehymt = ctx.req.query('translatehymt') === undefined ? '' : ':translatehymt';
+    extra += `${chatgpt}${autots}${translategemma}${llmgemma}${translatehymt}`;
 
     const { h64ToString } = await xxhash();
     const key = 'rsshub:koa-redis-cache:' + h64ToString(requestPath + format + limit + extra);
