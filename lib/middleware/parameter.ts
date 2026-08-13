@@ -13,9 +13,11 @@ import { simplecc } from 'simplecc-wasm';
 import { config } from '@/config';
 import type { Data, DataItem } from '@/types';
 import cache from '@/utils/cache';
+import { cancelUnload, scheduleUnload, warmupModel } from '@/utils/lmstudio';
 import logger from '@/utils/logger';
 import ofetch from '@/utils/ofetch';
 import { translateChunk, translateHtml } from '@/utils/translate-gemma';
+import { translateChunk as translateHymtChunk, translateHtml as translateHymtHtml } from '@/utils/translate-hymt';
 
 const md = markdownit({
     html: true,
@@ -72,7 +74,7 @@ const getAiCompletion = async (prompt: string, text: string) => {
 };
 
 // 语言代码 → 短代码；未指定或非法时返回 fallback
-// autots 无值默认 cn；translategemma 无值不指定（用服务端默认 prompt）
+// autots 无值默认 cn；translategemma 无值不指定（用服务端默认 prompt）；translatehymt 固定中文
 // gemma prompt 用短代码（Translate to CN），chatgpt prompt 用全名（LANG_FULL_NAMES）
 const LANG_MAP: Record<string, string> = {
     cn: 'CN',
@@ -378,6 +380,10 @@ const middleware: MiddlewareHandler = async (ctx, next) => {
 
         // openai
         if (ctx.req.query('chatgpt') !== undefined && config.openai.endpoint) {
+            // fallback 若是 LM Studio，本次请求期间保持加载
+            if (config.openai.fallbackEndpoint && config.openai.fallbackModel) {
+                cancelUnload(config.openai.fallbackEndpoint, config.openai.fallbackModel);
+            }
             // 分批处理 item，避免并发请求过多压垮翻译服务器
             const CHATGPT_CONCURRENCY = 2;
             for (let idx = 0; idx < data.item.length; idx += CHATGPT_CONCURRENCY) {
@@ -461,10 +467,16 @@ const middleware: MiddlewareHandler = async (ctx, next) => {
                     })
                 );
             }
+            // 翻译完随手卸载（LM Studio fallback）
+            if (config.openai.fallbackEndpoint && config.openai.fallbackModel) {
+                scheduleUnload(config.openai.fallbackEndpoint, config.openai.fallbackModel);
+            }
         }
 
         // translategemma（支持语言代码：?translategemma=jp；无值默认 cn）
         if (ctx.req.query('translategemma') !== undefined && config.translategemma.endpoint) {
+            cancelUnload(config.translategemma.endpoint, config.translategemma.model);
+            await warmupModel(config.translategemma.endpoint, config.translategemma.model, config.translategemma.apiKey);
             const lang = resolveLang(ctx.req.query('translategemma'), { code: 'cn', lang: 'CN' })!;
             const langSuffix = `:${lang.code}`;
             const gemmaPrompt = `Translate to ${lang.lang}`;
@@ -502,15 +514,141 @@ const middleware: MiddlewareHandler = async (ctx, next) => {
                     })
                 );
             }
+            // 翻译完随手卸载（LM Studio）
+            scheduleUnload(config.translategemma.endpoint, config.translategemma.model);
         }
 
-        // autots — 智能翻译（translategemma 优先，chatgpt 回退）
+        // translatehymt — Hy-MT2 专用翻译（固定中文，模型参数由配置提供）
+        if (ctx.req.query('translatehymt') !== undefined && config.translatehymt.endpoint) {
+            cancelUnload(config.translatehymt.endpoint, config.translatehymt.model);
+            await warmupModel(config.translatehymt.endpoint, config.translatehymt.model, config.translatehymt.apiKey);
+            // 分批处理 item，避免并发请求过多压垮翻译服务器
+            const HYMT_CONCURRENCY = 2;
+            for (let idx = 0; idx < data.item.length; idx += HYMT_CONCURRENCY) {
+                const batch = data.item.slice(idx, idx + HYMT_CONCURRENCY);
+                // oxlint-disable-next-line no-await-in-loop -- 故意分批串行处理，避免压垮 LLM 服务
+                await Promise.all(
+                    batch.map(async (item) => {
+                        const cacheKey = item.link || item.guid || '';
+                        try {
+                            if (item.title) {
+                                const title = await cache.tryGet(`translatehymt:title:v1:${cacheKey}`, async () => {
+                                    const t = convert(item.title!);
+                                    return await translateHymtChunk(t);
+                                });
+                                if (title !== '' && title !== item.title) {
+                                    item.title = title + ' -- ' + item.title;
+                                }
+                            }
+                            if (item.description) {
+                                const description = await cache.tryGet(`translatehymt:description:v1:${cacheKey}`, async () => {
+                                    const d = item.description!;
+                                    return await translateHymtHtml(d);
+                                });
+                                if (description !== '') {
+                                    item.description = description + '<hr/>' + item.description;
+                                }
+                            }
+                        } catch (error) {
+                            logger.warn(`[translatehymt] Translation failed for ${cacheKey}:`, error);
+                        }
+                        return item;
+                    })
+                );
+            }
+            // 翻译完随手卸载（LM Studio）
+            scheduleUnload(config.translatehymt.endpoint, config.translatehymt.model);
+        }
+
+        // llmgemma — 本机通用 LLM 整篇翻译（支持语言代码：?llmgemma=jp；无值默认 cn）
+        if (ctx.req.query('llmgemma') !== undefined && config.llmgemma.endpoint) {
+            // 局部常量：闭包内 TS 不再窄化 config 属性，这里先捕获
+            const llmEndpoint = config.llmgemma.endpoint;
+            const llmApiKey = config.llmgemma.apiKey;
+            const llmModel = config.llmgemma.model;
+            cancelUnload(llmEndpoint, llmModel);
+            await warmupModel(llmEndpoint, llmModel, llmApiKey);
+            const lang = resolveLang(ctx.req.query('llmgemma'), { code: 'cn', lang: 'CN' })!;
+            const langSuffix = `:${lang.code}`;
+            const langName = LANG_FULL_NAMES[lang.lang] || 'Simplified Chinese';
+            const promptTitle = `Translate the following title to ${langName}. Reply with ONLY the translation, nothing else.`;
+            const promptDesc = `Translate the following content to ${langName}. Reply with ONLY the translation, nothing else.`;
+            // 分批处理 item，避免并发请求过多压垮翻译服务器
+            const LLM_CONCURRENCY = 2;
+            for (let idx = 0; idx < data.item.length; idx += LLM_CONCURRENCY) {
+                const batch = data.item.slice(idx, idx + LLM_CONCURRENCY);
+                // oxlint-disable-next-line no-await-in-loop -- 故意分批串行处理，避免压垮 LLM 服务
+                await Promise.all(
+                    batch.map(async (item) => {
+                        const cacheKey = item.link || item.guid || '';
+                        try {
+                            if (item.title) {
+                                const title = await cache.tryGet(`llmgemma:title:v1${langSuffix}:${cacheKey}`, async () => {
+                                    let t = convert(item.title!);
+                                    t = t.replaceAll(/\[https?:\/\/[^\]]+\]/g, '');
+                                    return await callAi(llmEndpoint, llmApiKey, llmModel, promptTitle, t);
+                                });
+                                if (title !== '' && title !== item.title) {
+                                    item.title = title + ' -- ' + item.title;
+                                }
+                            }
+                            if (item.description) {
+                                const description = await cache.tryGet(`llmgemma:description:v1${langSuffix}:${cacheKey}`, async () => {
+                                    const d = item.description!;
+                                    // 保护 <pre> 和 <code> 块：替换为占位符，翻译后还原
+                                    const codeBlocks = new Map<string, string>();
+                                    let codeIdx = 0;
+                                    const protectedHtml = d
+                                        .replaceAll(/<pre[\s>][\s\S]*?<\/pre>/gi, (m) => {
+                                            codeBlocks.set(`⟨${codeIdx}⟩`, m);
+                                            return `⟨${codeIdx++}⟩`;
+                                        })
+                                        .replaceAll(/<code[\s>][\s\S]*?<\/code>/gi, (m) => {
+                                            codeBlocks.set(`⟨${codeIdx}⟩`, m);
+                                            return `⟨${codeIdx++}⟩`;
+                                        });
+                                    const text = convert(protectedHtml);
+                                    const mdText = await callAi(llmEndpoint, llmApiKey, llmModel, promptDesc, text);
+                                    let result = md.render(mdText);
+                                    for (const [key, original] of codeBlocks) {
+                                        result = result.split(key).join(original);
+                                    }
+                                    return result;
+                                });
+                                if (description !== '') {
+                                    item.description = description + '<hr/>' + item.description;
+                                }
+                            }
+                        } catch (error) {
+                            logger.warn(`[llmgemma] Translation failed for ${cacheKey}:`, error);
+                        }
+                        return item;
+                    })
+                );
+            }
+            // 翻译完随手卸载（LM Studio）
+            scheduleUnload(config.llmgemma.endpoint, config.llmgemma.model);
+        }
+
+        // autots — 智能翻译（translatehymt 优先，chatgpt 回退）
         const autotsParam = ctx.req.query('autots');
         if (autotsParam !== undefined) {
             const lang = resolveLang(autotsParam, { code: 'cn', lang: 'CN' })!;
             const langCode = lang.code;
             const langName = LANG_FULL_NAMES[lang.lang] || 'Simplified Chinese'; // chatgpt 回退用全名
-            const gemmaPrompt = `Translate to ${lang.lang}`;
+            // translatehymt 固定中文，仅 cn 时走 hymt，其余语言直接 chatgpt
+            const useHymt = lang.code === 'cn' && !!config.translatehymt.endpoint;
+            if (useHymt) {
+                cancelUnload(config.translatehymt.endpoint, config.translatehymt.model);
+                try {
+                    await warmupModel(config.translatehymt.endpoint, config.translatehymt.model, config.translatehymt.apiKey);
+                } catch (error) {
+                    logger.warn('[autots] hymt warmup failed, falling back to chatgpt:', error);
+                }
+            }
+            if (config.openai.fallbackEndpoint && config.openai.fallbackModel) {
+                cancelUnload(config.openai.fallbackEndpoint, config.openai.fallbackModel);
+            }
             const chatgptPromptTitle = `Translate the following title to ${langName}. Reply with ONLY the translation, nothing else.`;
             const chatgptPromptDesc = `Translate the following content to ${langName}. Reply with ONLY the translation, nothing else.`;
 
@@ -530,10 +668,10 @@ const middleware: MiddlewareHandler = async (ctx, next) => {
                                     `autots:title:${langCode}:${cacheKey}`,
                                     async () => {
                                         const t = convert(item.title!);
-                                        // 1. 尝试 translategemma
-                                        if (config.translategemma.endpoint) {
+                                        // 1. 尝试 translatehymt
+                                        if (useHymt) {
                                             try {
-                                                return await translateChunk(t, gemmaPrompt);
+                                                return await translateHymtChunk(t);
                                             } catch {
                                                 // 回退 chatgpt
                                             }
@@ -556,10 +694,10 @@ const middleware: MiddlewareHandler = async (ctx, next) => {
                                     `autots:description:${langCode}:${cacheKey}`,
                                     async () => {
                                         const d = item.description!;
-                                        // 1. 尝试 translategemma
-                                        if (config.translategemma.endpoint) {
+                                        // 1. 尝试 translatehymt
+                                        if (useHymt) {
                                             try {
-                                                return await translateHtml(d, gemmaPrompt);
+                                                return await translateHymtHtml(d);
                                             } catch {
                                                 // 回退 chatgpt
                                             }
@@ -600,6 +738,13 @@ const middleware: MiddlewareHandler = async (ctx, next) => {
                         return item;
                     })
                 );
+            }
+            // 翻译完随手卸载（LM Studio：hymt 优先路径 + chatgpt 回退）
+            if (useHymt) {
+                scheduleUnload(config.translatehymt.endpoint, config.translatehymt.model);
+            }
+            if (config.openai.fallbackEndpoint && config.openai.fallbackModel) {
+                scheduleUnload(config.openai.fallbackEndpoint, config.openai.fallbackModel);
             }
         }
 

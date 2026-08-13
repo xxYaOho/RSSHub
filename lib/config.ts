@@ -85,6 +85,20 @@ type ConfigEnvKeys =
     | 'TRANSLATE_GEMMA_MODEL'
     | 'TRANSLATE_GEMMA_MAX_INPUT_TOKENS'
     | 'TRANSLATE_GEMMA_PROMPT'
+    // LLMGemma
+    | 'LLM_GEMMA_ENDPOINT'
+    | 'LLM_GEMMA_API_KEY'
+    | 'LLM_GEMMA_MODEL'
+    // TranslateHyMT
+    | 'TRANSLATE_HYMT_ENDPOINT'
+    | 'TRANSLATE_HYMT_API_KEY'
+    | 'TRANSLATE_HYMT_MODEL'
+    | 'TRANSLATE_HYMT_PROMPT'
+    | 'TRANSLATE_HYMT_TEMPERATURE'
+    | 'TRANSLATE_HYMT_TOP_P'
+    | 'TRANSLATE_HYMT_TOP_K'
+    | 'TRANSLATE_HYMT_REPETITION_PENALTY'
+    | 'TRANSLATE_HYMT_MAX_TOKENS'
     // Follow
     | 'FOLLOW_OWNER_USER_ID'
     | 'FOLLOW_DESCRIPTION'
@@ -368,6 +382,22 @@ export type Config = {
         model?: string;
         maxInputTokens: number;
         prompt: string;
+    };
+    llmgemma: {
+        endpoint?: string;
+        apiKey?: string;
+        model?: string;
+    };
+    translatehymt: {
+        endpoint?: string;
+        apiKey?: string;
+        model?: string;
+        prompt: string;
+        temperature: number;
+        topP: number;
+        topK: number;
+        repetitionPenalty: number;
+        maxTokens: number;
     };
     follow: {
         ownerUserId?: string;
@@ -734,6 +764,8 @@ const value: Config | Record<string, any> = {};
 
 const TRUE_UA = 'RSSHub/1.0 (+http://github.com/DIYgod/RSSHub; like FeedFetcher-Google)';
 
+const toFloat = (value: string | undefined, defaultValue: number) => (value === undefined ? defaultValue : Number(value));
+
 const toBoolean = (value: string | undefined, defaultValue: boolean) => {
     if (value === undefined) {
         return defaultValue;
@@ -880,6 +912,22 @@ const calculateValue = () => {
             model: envs.TRANSLATE_GEMMA_MODEL,
             maxInputTokens: toInt(envs.TRANSLATE_GEMMA_MAX_INPUT_TOKENS, 1200),
             prompt: envs.TRANSLATE_GEMMA_PROMPT || 'Translate from English to Simplified Chinese.',
+        },
+        llmgemma: {
+            endpoint: envs.LLM_GEMMA_ENDPOINT,
+            apiKey: envs.LLM_GEMMA_API_KEY,
+            model: envs.LLM_GEMMA_MODEL,
+        },
+        translatehymt: {
+            endpoint: envs.TRANSLATE_HYMT_ENDPOINT,
+            apiKey: envs.TRANSLATE_HYMT_API_KEY,
+            model: envs.TRANSLATE_HYMT_MODEL,
+            prompt: envs.TRANSLATE_HYMT_PROMPT || 'Translate the following text into Chinese. Note that you should only output the translated result without any additional explanation:',
+            temperature: toFloat(envs.TRANSLATE_HYMT_TEMPERATURE, 0.7),
+            topP: toFloat(envs.TRANSLATE_HYMT_TOP_P, 0.6),
+            topK: toInt(envs.TRANSLATE_HYMT_TOP_K, 20) ?? 20,
+            repetitionPenalty: toFloat(envs.TRANSLATE_HYMT_REPETITION_PENALTY, 1.05),
+            maxTokens: toInt(envs.TRANSLATE_HYMT_MAX_TOKENS, 4096) ?? 4096,
         },
         follow: {
             ownerUserId: envs.FOLLOW_OWNER_USER_ID,
