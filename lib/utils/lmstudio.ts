@@ -1,3 +1,4 @@
+import { config } from '@/config';
 import logger from '@/utils/logger';
 import ofetch from '@/utils/ofetch';
 
@@ -25,9 +26,10 @@ export function cancelUnload(endpoint: string | undefined, model: string | undef
     }
 }
 
-// 使用后调用：延迟卸载，UNLOAD_DELAY 内无新请求则释放模型
+// 使用后调用：延迟卸载，UNLOAD_DELAY 内无新请求则释放模型。
+// 受 LMSTUDIO_AUTO_UNLOAD 开关控制（默认关闭 = 模型常驻）。
 export function scheduleUnload(endpoint: string | undefined, model: string | undefined): void {
-    if (!endpoint || !model) {
+    if (!config.lmstudioAutoUnload || !endpoint || !model) {
         return;
     }
     cancelUnload(endpoint, model);

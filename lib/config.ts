@@ -99,6 +99,8 @@ type ConfigEnvKeys =
     | 'TRANSLATE_HYMT_TOP_K'
     | 'TRANSLATE_HYMT_REPETITION_PENALTY'
     | 'TRANSLATE_HYMT_MAX_TOKENS'
+    // LM Studio lifecycle
+    | 'LMSTUDIO_AUTO_UNLOAD'
     // Follow
     | 'FOLLOW_OWNER_USER_ID'
     | 'FOLLOW_DESCRIPTION'
@@ -399,6 +401,8 @@ export type Config = {
         repetitionPenalty: number;
         maxTokens: number;
     };
+    // 翻译完成后是否自动卸载 LM Studio 模型（false = 常驻，true = 30s 空闲后卸载）
+    lmstudioAutoUnload: boolean;
     follow: {
         ownerUserId?: string;
         description?: string;
@@ -929,6 +933,7 @@ const calculateValue = () => {
             repetitionPenalty: toFloat(envs.TRANSLATE_HYMT_REPETITION_PENALTY, 1.05),
             maxTokens: toInt(envs.TRANSLATE_HYMT_MAX_TOKENS, 4096) ?? 4096,
         },
+        lmstudioAutoUnload: toBoolean(envs.LMSTUDIO_AUTO_UNLOAD, false),
         follow: {
             ownerUserId: envs.FOLLOW_OWNER_USER_ID,
             description: envs.FOLLOW_DESCRIPTION,

@@ -212,6 +212,7 @@ source ~/.zshrc && pm2 start "env \
   TRANSLATE_HYMT_ENDPOINT=http://localhost:1234/v1 \
   TRANSLATE_HYMT_API_KEY=lmstudio \
   TRANSLATE_HYMT_MODEL=hy-mt2-7b \
+  'LMSTUDIO_AUTO_UNLOAD=false' \
   npx tsx lib/index.ts" --name rsshub
 
 # 管理
@@ -289,6 +290,11 @@ PORT=1300 screen -dmS rsshub-dev env \
 `?autots` 支持语言代码：`cn/zh` (中文), `jp/ja` (日文), `en` (英文), `ko` (韩文), `fr` (法文), `de` (德文)。不传值默认为 `cn`。
 
 `?autots=cn` 走 Hy-MT2（本机，固定中文），其余语言跳过 Hy-MT2 直接走 DeepSeek。
+
+**LM Studio 模型生命周期**：
+
+- 翻译前自动预热：模型未加载时先发单请求排队加载（LM Studio 未加载时并发请求会立即 500），加载完成后才并发翻译
+- 翻译后自动卸载：`LMSTUDIO_AUTO_UNLOAD`（默认 `false` = 模型常驻）。设为 `true` 时，翻译完成 30 秒后自动卸载模型释放显存。生产环境 Hy-MT2 常驻，无需设置
 
 **RSS 代理路由**: `/proxy/rss?url=<外部RSS地址>`
 
