@@ -193,6 +193,7 @@ source ~/.zshrc && pm2 start "env \
   PORT=1200 \
   CACHE_TYPE=redis \
   REDIS_URL=redis://localhost:6379/ \
+  CACHE_EXPIRE=2100 \
   OPENAI_API_ENDPOINT=\${DEEPSEEK_BASE_URL}/v1 \
   OPENAI_API_KEY=\${DEEPSEEK_API_KEY} \
   OPENAI_MODEL=deepseek-v4-flash \
@@ -208,6 +209,9 @@ source ~/.zshrc && pm2 start "env \
   TRANSLATE_GEMMA_MODEL=translategemma-12b-it \
   TRANSLATE_GEMMA_MAX_INPUT_TOKENS=1200 \
   'TRANSLATE_GEMMA_PROMPT=Translate from English to Simplified Chinese.' \
+  TRANSLATE_HYMT_ENDPOINT=http://localhost:1234/v1 \
+  TRANSLATE_HYMT_API_KEY=lmstudio \
+  TRANSLATE_HYMT_MODEL=hy-mt2-7b \
   npx tsx lib/index.ts" --name rsshub
 
 # 管理
@@ -277,10 +281,14 @@ PORT=1300 screen -dmS rsshub-dev env \
 | 参数              | 说明                                                        | 示例                                        |
 | ----------------- | ----------------------------------------------------------- | ------------------------------------------- |
 | `?chatgpt`        | DeepSeek 整篇翻译                                           | `/proxy/rss?url=...&chatgpt&limit=5`        |
+| `?translatehymt`  | Hy-MT2 专用翻译（固定中文，本机 LM Studio）                 | `/proxy/rss?url=...&translatehymt&limit=1`  |
 | `?translategemma` | TranslateGemma 分段翻译（默认英译中，`=jp` 等指定目标语言） | `/proxy/rss?url=...&translategemma&limit=1` |
-| `?autots`         | 智能翻译（gemma 优先，chatgpt 回退）                        | `/proxy/rss?url=...&autots=jp&limit=1`      |
+| `?llmgemma`       | 通用 LLM 整篇翻译（`=jp` 等指定目标语言）                   | `/proxy/rss?url=...&llmgemma&limit=1`       |
+| `?autots`         | 智能翻译（translatehymt 优先，chatgpt 回退）                | `/proxy/rss?url=...&autots=jp&limit=1`      |
 
 `?autots` 支持语言代码：`cn/zh` (中文), `jp/ja` (日文), `en` (英文), `ko` (韩文), `fr` (法文), `de` (德文)。不传值默认为 `cn`。
+
+`?autots=cn` 走 Hy-MT2（本机，固定中文），其余语言跳过 Hy-MT2 直接走 DeepSeek。
 
 **RSS 代理路由**: `/proxy/rss?url=<外部RSS地址>`
 
@@ -319,8 +327,14 @@ PORT=1300 CACHE_TYPE=redis REDIS_URL=redis://localhost:6379/ pnpm dev
 
 ## Known Issues
 
+### 缓存过期时间与 RSS 阅读器刷新间隔不匹配导致超时
+
+**场景**: Reeder 等 RSS 阅读器设置 30 分钟自动刷新，但 RSSHub 默认缓存仅 5 分钟 (`CACHE_EXPIRE=300`)。每次阅读器请求时缓存都已过期，触发冷缓存抓取。在家庭网络环境下（如 Mac Mini + Tailscale），冷抓取偶发超时。
+
+**修复**: 将 `CACHE_EXPIRE` 调到比阅读器刷新间隔稍长（如 35 分钟 / 2100 秒），确保每次请求命中缓存。已纳入生产 pm2 启动命令。
+
 ### ~~Cache key 未包含翻译参数~~（已修复，commit 532dd9886）
 
-`lib/middleware/cache.ts` 的缓存 key 已包含 `chatgpt`/`autots`/`translategemma` 及语言代码（如 `:autots=jp`、`:translategemma=jp`），带翻译与不带翻译的请求使用独立的 `controlKey`，不再互相阻塞或污染缓存。
+`lib/middleware/cache.ts` 的缓存 key 已包含 `chatgpt`/`autots`/`translategemma`/`translatehymt`/`llmgemma` 及语言代码（如 `:autots=jp`、`:translategemma=jp`），带翻译与不带翻译的请求使用独立的 `controlKey`，不再互相阻塞或污染缓存。
 
 注意：`translategemma` 语言代码纳入 controlKey 后，旧缓存 key 的哈希变化，升级后首次请求会重新生成，属正常现象。

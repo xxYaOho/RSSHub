@@ -1,3 +1,5 @@
+import 'winston-daily-rotate-file';
+
 import path from 'node:path';
 
 import winston from 'winston';
@@ -7,11 +9,19 @@ import { config } from '@/config';
 let transports: Array<typeof winston.transports.File> = [];
 if (!config.noLogfiles && !process.env.VERCEL) {
     transports = [
-        new winston.transports.File({
-            filename: path.resolve('logs/error.log'),
+        new winston.transports.DailyRotateFile({
+            filename: path.resolve('logs/error-%DATE%.log'),
             level: 'error',
+            datePattern: 'YYYY-MM-DD',
+            maxSize: '50m',
+            maxFiles: '5',
         }),
-        new winston.transports.File({ filename: path.resolve('logs/combined.log') }),
+        new winston.transports.DailyRotateFile({
+            filename: path.resolve('logs/combined-%DATE%.log'),
+            datePattern: 'YYYY-MM-DD',
+            maxSize: '50m',
+            maxFiles: '5',
+        }),
     ];
 }
 const logger = winston.createLogger({

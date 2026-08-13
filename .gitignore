@@ -47,3 +47,4 @@ yarn.lock
 yarn-error.log
 
 dist-container
+logs/
