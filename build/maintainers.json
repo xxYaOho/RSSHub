@@ -3605,6 +3605,9 @@
   "/dpm/exhibitions/:type?": [
     "magazian"
   ],
+  "/dsh/changelog": [
+    "xxYaOho"
+  ],
   "/dtcj/datahero/:category?": [
     "nczitzk"
   ],

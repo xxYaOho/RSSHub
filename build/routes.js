@@ -53210,6 +53210,44 @@ export default {
       "name": "故宫博物院"
     }
   },
+  "dsh": {
+    "routes": {
+      "/changelog": {
+        "path": "/changelog",
+        "name": "Changelog",
+        "url": "github.com/deepseek-ai/deepseek-harness/releases",
+        "maintainers": [
+          "xxYaOho"
+        ],
+        "example": "/dsh/changelog",
+        "categories": [
+          "program-update"
+        ],
+        "features": {
+          "requireConfig": false,
+          "requirePuppeteer": false,
+          "antiCrawler": false,
+          "supportRadar": true,
+          "supportBT": false,
+          "supportPodcast": false,
+          "supportScihub": false
+        },
+        "radar": [
+          {
+            "source": [
+              "github.com/deepseek-ai/deepseek-harness/releases"
+            ],
+            "target": "/changelog"
+          }
+        ],
+        "location": "changelog.ts",
+        "module": () => import('@/routes/dsh/changelog.ts')
+      }
+    },
+    "apiRoutes": {},
+    "name": "DeepSeek Harness",
+    "url": "github.com/deepseek-ai/deepseek-harness"
+  },
   "dtcj": {
     "routes": {
       "/datahero/:category?": {

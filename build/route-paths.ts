@@ -875,6 +875,7 @@ export type RoutePath =
   | `/dribbble/keyword/:keyword`
   | `/dribbble/popular/:timeframe?`
   | `/dribbble/user/:name`
+  | `/dsh/changelog`
   | `/dtcj/datahero/:category?`
   | `/dtcj/datainsight/:id?`
   | `/duckdb/news`
