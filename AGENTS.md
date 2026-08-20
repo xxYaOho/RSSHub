@@ -10,6 +10,7 @@ RSSHub 项目的 fork 仓库, 保留完整的 RSSHub 能力和用途, 增加 hum
 ## 任务导览
 
 - 写/改路由 → 先读 `docs/simple-wiki/wiki/route-standards.md` 和 `project-architecture.md`
+- 生产线更新上线 → `mise run update` (install → pm2 重建 → 健康检查); 细节见 `environments-deployment.md`
 - 部署/重启/环境 → `environments-deployment.md`; 故障排查 → `known-issues.md`
 - 翻译功能 → `translation-feature.md`
 - 自开发路由清单 → `custom-routes.md`

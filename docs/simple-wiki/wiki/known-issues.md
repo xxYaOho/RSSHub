@@ -3,9 +3,9 @@ title: 已知问题与踩坑
 type: pitfall
 created: 2026-08-20
 updated: 2026-08-20
-sources: [raw/project-guide-claude.md]
+sources: [raw/project-guide-claude.md, raw/mise-production-flow.md]
 topic: 部署运维
-tags: [pitfall, cache, pm2, 端口]
+tags: [pitfall, cache, pm2, 端口, mise]
 status: current
 context: 1
 ---
@@ -14,12 +14,12 @@ context: 1
 
 运维与开发中已确认的坑及解法。环境背景见 [开发与生产环境](environments-deployment.md)。
 
-来源：[CLAUDE.md](../raw/project-guide-claude.md)
+来源：[CLAUDE.md](../raw/project-guide-claude.md)、[mise 生产流程固化与 pm2 启动脚本化](../raw/mise-production-flow.md)
 
 ## 缓存过期时间与阅读器刷新间隔不匹配导致超时
 
 - **现象**：Reeder 等阅读器 30 分钟自动刷新，而默认 `CACHE_EXPIRE=300`（5 分钟），每次请求都是冷缓存抓取；家庭网络（Mac Mini + Tailscale）下冷抓取偶发超时。
-- **解法**：`CACHE_EXPIRE` 调到略长于阅读器刷新间隔（2100 秒 / 35 分钟），保证命中缓存。已纳入生产 pm2 启动命令。
+- **解法**：`CACHE_EXPIRE` 调到略长于阅读器刷新间隔（2100 秒 / 35 分钟），保证命中缓存。已固化在 `scripts/prod/start.sh` 内。
 
 ## 端口残留进程
 
@@ -33,7 +33,14 @@ context: 1
 
 ## pm2 环境变量不随 restart 更新
 
-- `pm2 restart`（含 `--update-env`）不重新读 `.env`，只更新当前 shell 变量。改环境变量必须 `pm2 delete rsshub && pm2 start ...` 重建。
+- `pm2 restart`（含 `--update-env`）不重新读 `.env`，只更新当前 shell 变量。改环境变量必须 `pm2 delete rsshub && pm2 start ...` 重建；`mise run restart` 已固定这一重建动作（见 [开发与生产环境](environments-deployment.md)）。
+
+## bash 下 source ~/.zshrc 被 bun 补全脚本 `_bun` 打断
+
+- **现象**：`mise run update` 首跑生产进程 errored，日志 `/Users/teatin/.bun/_bun: line 922: syntax error near unexpected token '('`。
+- **根因**：`scripts/prod/start.sh` 用 bash 执行，而 `~/.zshrc:30` source 的 bun 补全脚本 `_bun` 是 zsh 专有语法，bash 解析报错；`set -e` 致脚本退出，pm2 重启循环 15 次后 errored。旧流程没踩到是因为当时在交互式 zsh 里 source，zsh 能解析 `_bun`。
+- **解法**：不 source 整个 zshrc，只 eval 需要的行：`eval "$(grep -E '^DEEPSEEK_(BASE_URL|API_KEY)=' ~/.zshrc)"`。
+- **注意**：`DEEPSEEK_BASE_URL` / `DEEPSEEK_API_KEY` 在 `~/.zshrc:62-63` 是**无 export 的赋值行**（靠交互 shell 展开生效），grep 模式不要加 `^export`。
 
 ## 已修复：cache key 未包含翻译参数（commit 532dd9886）
 

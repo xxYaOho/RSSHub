@@ -17,6 +17,6 @@
 
 ## 部署运维
 
-- [开发与生产环境](environments-deployment.md) | 1k | master/pm2/1200 生产与 worktree dev/1300 开发的环境划分与部署流程 | deploy, pm2, worktree, redis
+- [开发与生产环境](environments-deployment.md) | 2k | master/pm2/1200 生产与 worktree dev/1300 开发的环境划分；生产流程由 mise 任务流（update/restart/health/logs）固化，update 纯部署不含 git | deploy, pm2, worktree, redis, mise
 - [双语翻译功能](translation-feature.md) | 1k | 翻译路由参数、环境变量、LM Studio 模型生命周期与 benchmark | translation, llm, lmstudio, deepseek
-- [已知问题与踩坑](known-issues.md) | 1k | 缓存过期、端口残留、pm2 环境变量等运维坑及解法 | pitfall, cache, pm2, 端口
+- [已知问题与踩坑](known-issues.md) | 1k | 缓存过期、端口残留、pm2 环境变量、bash source zshrc 被 `_bun` 打断等运维坑及解法 | pitfall, cache, pm2, 端口, mise

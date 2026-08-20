@@ -1,0 +1,37 @@
+# 环境管理: Node / pnpm 版本锁定 + 生产流程任务
+# 首次使用: mise trust && mise install
+
+[tools]
+node = "24"
+pnpm = "10"
+
+# 生产线更新: 把当前 master 送上生产线 (git 操作归人工, 不在此流程内)
+# 用法: 自行 merge/pull 更新 master 后, mise run update
+[tasks.update]
+description = "生产线更新: pnpm install → pm2 重建 → 健康检查"
+run = ["pnpm install --frozen-lockfile", "mise run restart", "mise run health"]
+
+# 重建生产进程。pm2 restart 不重读环境变量, 必须 delete + start
+[tasks.restart]
+description = "重建生产 pm2 进程 (delete + start, 重读环境变量) 并 pm2 save 持久化"
+run = """
+pm2 delete rsshub || true
+pm2 start scripts/prod/start.sh --name rsshub
+pm2 save
+"""
+
+[tasks.health]
+description = "生产健康检查 (:1200), 最多等待 60 秒"
+run = """
+for i in $(seq 1 30); do
+  code=$(curl -s --noproxy '*' -o /dev/null -w '%{http_code}' http://localhost:1200/ || true)
+  if [ \"$code\" = \"200\" ]; then echo \"OK :1200 ($code)\"; exit 0; fi
+  sleep 2
+done
+echo \"FAIL: :1200 未就绪 (last=$code)\" >&2
+exit 1
+"""
+
+[tasks.logs]
+description = "查看生产日志 (pm2 logs rsshub)"
+run = "pm2 logs rsshub"
