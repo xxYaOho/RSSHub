@@ -1,3 +1,9 @@
+---
+class: material
+ingested: true
+metadata: ~
+---
+
 # 自定义路由手册
 
 本项目的自开发路由和新增功能速查。
@@ -60,7 +66,7 @@
 | ----------------- | ----------------------------------- | ---------------------------------------- |
 | `?chatgpt`        | DeepSeek / OpenAI                   | 整篇一次性翻译，速度快                   |
 | `?translategemma` | TranslateGemma-12b (本地 LM Studio) | 按段落/标题/列表分段翻译，保留 HTML 结构 |
-| `?autots`         | 智能切换                            | `cn` 优先 Hy-MT2（本地），失败或其他语言回退 chatgpt |
+| `?autots`         | 智能切换                            | 先尝试 translategemma，失败回退 chatgpt  |
 
 `?autots` 语言代码：
 
