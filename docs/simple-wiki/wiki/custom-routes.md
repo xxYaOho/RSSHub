@@ -44,12 +44,13 @@ context: 1
 
 ## 其他自开发路由
 
-| 命名空间          | 路径                                     | 说明                                         |
-| ----------------- | ---------------------------------------- | -------------------------------------------- |
-| `/claude`         | `/claude/blog`、`/claude/code-changelog` | Anthropic 官方博客、Claude Code CLI 更新日志 |
-| `/humanlayer`     | `/humanlayer/blog`                       | HumanLayer 官方博客                          |
-| `/bangumi.online` | —                                        | 番组在线订阅源                               |
-| `/mwm`            | `/mwm`                                   | —                                            |
-| `/runyeah`        | `/runyeah/posts`                         | —                                            |
+| 命名空间          | 路径                                     | 说明                                              |
+| ----------------- | ---------------------------------------- | ------------------------------------------------- |
+| `/claude`         | `/claude/blog`、`/claude/code-changelog` | Anthropic 官方博客、Claude Code CLI 更新日志      |
+| `/dsh`            | `/dsh/changelog`                         | DeepSeek Harness 发版记录（GitHub releases atom） |
+| `/humanlayer`     | `/humanlayer/blog`                       | HumanLayer 官方博客                               |
+| `/bangumi.online` | —                                        | 番组在线订阅源                                    |
+| `/mwm`            | `/mwm`                                   | —                                                 |
+| `/runyeah`        | `/runyeah/posts`                         | —                                                 |
 
 新增的 ChatGPT / Kimi Code changelog 路由设计见 [Changelog 路由设计（ChatGPT 与 Kimi Code）](changelog-routes-design.md)。

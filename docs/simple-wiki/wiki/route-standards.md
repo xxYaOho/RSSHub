@@ -18,6 +18,7 @@ context: 2
 
 ## 路由配置
 
+- **新增自研路由时同步登记两处**：`lib/custom-namespaces.ts`（/dashboard 页面的自研清单数据源）和 `docs/simple-wiki/wiki/custom-routes.md`。
 - `example` 必须以 `/` 开头，是可运行的路由路径，不是完整 URL。
 - 路由 `name` 不重复 namespace 名（namespace 在 `namespace.ts` 已定义）。
 - `radar[].source` 用相对路径，不带 `https://` 前缀，如 `source: ['www.example.com/path']`。
