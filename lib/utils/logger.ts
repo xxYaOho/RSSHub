@@ -6,7 +6,7 @@ import winston from 'winston';
 
 import { config } from '@/config';
 
-let transports: Array<typeof winston.transports.File> = [];
+let transports: winston.transport[] = [];
 if (!config.noLogfiles && !process.env.VERCEL) {
     transports = [
         new winston.transports.DailyRotateFile({

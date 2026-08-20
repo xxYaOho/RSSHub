@@ -1,4 +1,3 @@
-import Parser from '@jocmp/mercury-parser';
 import type { CheerioAPI } from 'cheerio';
 import { load } from 'cheerio';
 import type { Element } from 'domhandler';
@@ -138,6 +137,7 @@ const middleware: MiddlewareHandler = async (ctx, next) => {
 
         const handleItem = (item: DataItem) => {
             item.title &&= entities.decodeXML(item.title + '');
+            item.description ||= item.content?.html;
 
             // handle pubDate
             if (item.pubDate) {
@@ -253,7 +253,7 @@ const middleware: MiddlewareHandler = async (ctx, next) => {
                 const title = item.title || '';
                 const description = item.description || title;
                 const author = getAuthorString(item);
-                const category = item.category || [];
+                const category = (item.category as string[] | undefined) || [];
                 const isFilter =
                     regex instanceof RE2JS
                         ? regex.matcher(title).find() || regex.matcher(description).find() || regex.matcher(author).find() || category.some((c) => regex.matcher(c).find())
@@ -269,7 +269,7 @@ const middleware: MiddlewareHandler = async (ctx, next) => {
                 const title = item.title || '';
                 const description = item.description || title;
                 const author = getAuthorString(item);
-                const category = item.category || [];
+                const category = (item.category as string[] | undefined) || [];
                 let isFilter = true;
 
                 if (ctx.req.query('filter_title')) {
@@ -298,7 +298,7 @@ const middleware: MiddlewareHandler = async (ctx, next) => {
                 const title = item.title;
                 const description = item.description || title;
                 const author = getAuthorString(item);
-                const category = item.category || [];
+                const category = (item.category as string[] | undefined) || [];
                 let isFilter = true;
 
                 if (ctx.req.query('filterout') || ctx.req.query('filterout_title')) {
@@ -360,6 +360,7 @@ const middleware: MiddlewareHandler = async (ctx, next) => {
                     if (link) {
                         // if parser failed, return default description and not report error
                         try {
+                            const { default: Parser } = await import('@jocmp/mercury-parser');
                             const res = await ofetch(link);
                             const $ = load(res);
                             const result = await Parser.parse(link, {

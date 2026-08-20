@@ -23,7 +23,7 @@ const getProxyOptions = (currentProxy: ProxyState | null | undefined) => {
     const username = currentProxy.urlHandler?.username;
     const password = currentProxy.urlHandler?.password;
     if (username || password) {
-        if (currentProxy.urlHandler.protocol !== 'http:') {
+        if (currentProxy.urlHandler!.protocol !== 'http:') {
             logger.warn('SOCKS/HTTPS proxy with authentication is not supported by playwright, continue without proxy');
             return {};
         }
@@ -31,7 +31,7 @@ const getProxyOptions = (currentProxy: ProxyState | null | undefined) => {
         return {
             proxy: {
                 password: decodeURIComponent(password ?? ''),
-                server: proxyServerFromUrl(currentProxy.urlHandler),
+                server: proxyServerFromUrl(currentProxy.urlHandler!),
                 username: decodeURIComponent(username ?? ''),
             },
         } satisfies Pick<LaunchOptions, 'proxy'>;
@@ -108,11 +108,10 @@ const getBrowserlessEndpoint = (endpoint: string, launchOptions: BrowserlessLaun
     return endpointURL.href;
 };
 
-const scheduleClose = (browser: Browser, timeout = 30000) => {
+const scheduleClose = (browser: Browser, timeout = 30000) =>
     setTimeout(() => {
         void browser.close();
     }, timeout);
-};
 
 /**
  * @returns Playwright browser context (native `newPage()` shares state across calls)
@@ -156,7 +155,12 @@ export const getPlaywrightPage = async (
     const currentProxyState = currentProxy && allowProxy ? currentProxy : null;
     const hasProxy = Boolean(getProxyOptions(currentProxyState).proxy);
     const { browser, context } = await launchBrowser(currentProxyState);
-    scheduleClose(browser, instanceOptions.closeTimeout);
+    const closeTimer = scheduleClose(browser, instanceOptions.closeTimeout);
+    const destroy = async () => {
+        clearTimeout(closeTimer);
+        await browser.close();
+    };
+
     const page = await context.newPage();
 
     if (hasProxy && currentProxyState) {
@@ -174,17 +178,15 @@ export const getPlaywrightPage = async (
             if (hasProxy && currentProxyState && proxy.multiProxy) {
                 logger.warn(`Playwright navigation failed with proxy ${currentProxyState.uri}, marking as failed: ${error}`);
                 proxy.markProxyFailed(currentProxyState.uri);
-                throw error;
             }
+            await destroy();
             throw error;
         }
     }
 
     return {
         context,
-        destroy: async () => {
-            await context.close();
-        },
+        destroy,
         page,
     };
 };

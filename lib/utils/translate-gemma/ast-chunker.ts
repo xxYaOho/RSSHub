@@ -1,5 +1,6 @@
-import type { CheerioAPI, Element } from 'cheerio';
+import type { CheerioAPI } from 'cheerio';
 import { load } from 'cheerio';
+import type { Element } from 'domhandler';
 import * as entities from 'entities';
 
 export interface ListParent {
@@ -23,8 +24,8 @@ const BLOCK_TAGS = new Set(['p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'li', 'bloc
 function extractAttrs(el: Element): Record<string, string> {
     const attrs: Record<string, string> = {};
     if (el.attribs) {
-        for (const key of Object.keys(el.attribs)) {
-            attrs[key] = el.attribs[key];
+        for (const [key, value] of Object.entries(el.attribs)) {
+            attrs[key] = value;
         }
     }
     return attrs;
@@ -39,7 +40,7 @@ function extractChunk($: CheerioAPI, $el: any): Chunk {
         const key = `NO_TRANSLATE_${placeholderId++}_`;
         const codeTag = codeEl.tagName.toLowerCase();
         const codeAttrs = Object.entries(codeEl.attribs || {})
-            .map(([k, v]) => ` ${k}="${entities.encodeXML(v)}"`)
+            .map(([k, v]) => ` ${k}="${entities.encodeXML(String(v))}"`)
             .join('');
         placeholders.set(key, `<${codeTag}${codeAttrs}>${$(codeEl).html()}</${codeTag}>`);
         $(codeEl).replaceWith(key);
@@ -64,8 +65,8 @@ function extractChunk($: CheerioAPI, $el: any): Chunk {
             if (parentTag === 'ul' || parentTag === 'ol') {
                 const parentAttrs: Record<string, string> = {};
                 if (parent.attribs) {
-                    for (const key of Object.keys(parent.attribs)) {
-                        parentAttrs[key] = parent.attribs[key];
+                    for (const [key, value] of Object.entries(parent.attribs as Record<string, string>)) {
+                        parentAttrs[key] = value;
                     }
                 }
                 chunk.listParent = {
@@ -84,7 +85,7 @@ export function chunkHtml(html: string): Chunk[] {
     const chunks: Chunk[] = [];
 
     function traverse(el: Element) {
-        if (el.type === 'text') {
+        if ((el as any).type === 'text') {
             const text = (el as any).data?.trim();
             if (text) {
                 chunks.push({ tagName: 'p', attrs: {}, text, placeholders: new Map() });
@@ -105,7 +106,7 @@ export function chunkHtml(html: string): Chunk[] {
                 text: '',
                 placeholders: new Map(),
                 noTranslate: true,
-                rawHtml: $(el).html(),
+                rawHtml: $(el).html() ?? undefined,
             });
             return;
         }
@@ -118,12 +119,14 @@ export function chunkHtml(html: string): Chunk[] {
             return;
         }
 
-        for (const child of el.children || []) {
+        const children = el.children || [];
+        for (const child of children) {
             traverse(child as Element);
         }
     }
 
-    for (const child of $.root()[0].children || []) {
+    const rootChildren = $.root()[0].children || [];
+    for (const child of rootChildren) {
         traverse(child as Element);
     }
 
