@@ -53,6 +53,7 @@ const handler = async (ctx: Context): Promise<Data> => {
         description: feedTitle,
         link: targetUrl,
         item: items,
+        language: language === 'zh' ? 'zh-CN' : 'en',
     };
 };
 
