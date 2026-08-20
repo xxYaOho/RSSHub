@@ -4,7 +4,7 @@
  */
 
 /** 自研命名空间（lib/routes 下本 fork 新增的目录） */
-export const selfDevelopedNamespaces: string[] = ['bangumi.online', 'chatgpt', 'claude', 'humanlayer', 'kimicode', 'mwm', 'proxy', 'runyeah', 'uisdc'];
+export const selfDevelopedNamespaces: string[] = ['bangumi.online', 'chatgpt', 'claude', 'dsh', 'humanlayer', 'kimicode', 'mwm', 'proxy', 'runyeah', 'uisdc'];
 
 /** 对上游路由的本地修改（路由与上游一致，只标注改动点） */
 export const locallyModifiedNamespaces: Array<{ namespace: string; note: string }> = [
