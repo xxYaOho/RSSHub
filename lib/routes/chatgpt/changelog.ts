@@ -34,7 +34,19 @@ const handler = async (ctx: Context): Promise<Data> => {
             // The first h3 is the entry title; h3 elements inside article are section headings
             const title = $entry.find('h3').first().text().replaceAll(/\s+/g, ' ').trim();
             const dateText = $entry.find('time').first().text().trim();
-            const description = $entry.find('article').first().html() ?? '';
+            const $article = $entry.find('article').first();
+            // Drop the "Changelog" section (full PR listing) from GitHub release entries
+            $article
+                .find('h2')
+                .filter((_, h2) => $(h2).text().trim() === 'Changelog')
+                .each((_, h2) => {
+                    $(h2).nextAll().remove();
+                    $(h2).remove();
+                });
+            // Unwrap <details> so the remaining sections render directly, dropping the "View details" summary
+            $article.find('details summary').remove();
+            $article.find('details').replaceWith((_, details) => $(details).children());
+            const description = $article.html() ?? '';
 
             return {
                 title,
