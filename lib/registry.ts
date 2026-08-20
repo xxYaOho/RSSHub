@@ -7,6 +7,7 @@ import { config } from '@/config';
 import type { DevRegistry } from '@/registry-dev';
 import type { NamespacesType, RoutesType } from '@/registry-helpers';
 import { registerApiRoutes, registerRssRoutes } from '@/registry-helpers';
+import { createDashboardHandler } from '@/routes/dashboard';
 import healthz from '@/routes/healthz';
 import index from '@/routes/index';
 import metrics from '@/routes/metrics';
@@ -81,6 +82,10 @@ if (!devRegistry) {
 }
 
 app.get('/', index);
+app.get(
+    '/dashboard',
+    createDashboardHandler(() => namespaces, ensureAllLoaded)
+);
 app.get('/healthz', healthz);
 app.get('/robots.txt', robotstxt);
 if (config.debugInfo !== 'false') {
