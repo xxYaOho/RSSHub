@@ -1,9 +1,9 @@
-import type { FC } from 'hono/jsx';
+import type { FC, PropsWithChildren } from 'hono/jsx';
 
-export const Layout: FC = (props) => (
+export const Layout: FC<PropsWithChildren<{ title?: string }>> = (props) => (
     <html>
         <head>
-            <title>Welcome to RSSHub!</title>
+            <title>{props.title ?? 'Welcome to RSSHub!'}</title>
             <meta name="color-scheme" content="light dark" />
             <script src="https://cdn.tailwindcss.com"></script>
             <style>

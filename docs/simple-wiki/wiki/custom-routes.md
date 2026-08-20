@@ -14,6 +14,8 @@ context: 1
 
 本 fork 的自开发路由与对上游路由的本地修改速查。翻译参数详见 [双语翻译功能](translation-feature.md)。
 
+实例内置 Dashboard 页面 `/dashboard`（生产 `http://127.0.0.1:1200/dashboard`，`?tab=features` 直达功能页），可视化展示下列全部自研路由与功能，数据实时来自路由注册表。自研清单真源：`lib/custom-namespaces.ts`，新增自研路由时与该文件同步更新。
+
 来源：[自定义路由手册](../raw/custom-routes-manual.md)
 
 ## 优设网 `/uisdc`
