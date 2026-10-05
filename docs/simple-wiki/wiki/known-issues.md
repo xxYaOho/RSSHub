@@ -46,3 +46,18 @@ context: 1
 
 - `lib/middleware/cache.ts` 的缓存 key 已包含 `chatgpt`/`autots`/`translategemma`/`translatehymt`/`llmgemma` 及语言代码，带翻译与不带翻译的请求用独立 `controlKey`，不再互相阻塞或污染缓存。
 - 升级后旧缓存 key 哈希变化，首次请求重新生成，属正常现象。
+
+## LM Studio Hy-MT2 卡死（模型 loaded 但推理无响应）
+
+- **现象**：`?translatehymt`/`?autots` 的翻译请求长时间不返回；日志大量 `[translatehymt] Chunk N failed after 3 attempts: ... TimeoutError`、`[autots] hymt warmup failed ... within 180s`；codex-cli 等 autots 订阅每轮刷新 250s+，translatehymt 请求可拖数小时（实测 33,041s）。
+- **判据**：`/v1/models` 秒回且 `api/v0/models` 显示 `state: loaded`，但 `/v1/chat/completions` 一直无响应；`lsof -p <pid> -iTCP@127.0.0.1:1234 | wc -l` 显示 RSSHub 与 LM Studio 两侧各积累近万条 ESTABLISHED。
+- **解法**：先重启 LM Studio（卡死时 `osascript` quit 与 SIGTERM 均无效，需 `kill -KILL`，再 `open -a "LM Studio"` 并等模型 `state: loaded`），再 `mise run restart` 重建 RSSHub 清连接。恢复后首轮翻译约 65s，随后缓存命中为毫秒级。
+- **注意**：hymt 300s 超时 ×3 重试 + 180s 预热会让一个卡死模型把请求拖数小时，属待改进点（应快速失败回退）。
+
+## GitHub releases.atom 会输出未发布的草稿 release
+
+- **现象**：`/dsh/changelog` 里出现正文与真实 release notes 不符的条目——标题像版本号（`dsh-v0.1.5-rc.3`），正文却是发版自动化写入的 merge commit 标题（`Merge pull request #4909 from deepseek-harness/worktree/release-dsh-0…`）。曾有阅读器只收到这样一条"新条目"。
+- **根因**：deepseek-harness 的发版流程是「合并 release PR 时先建 release 草稿（正文 = merge commit 标题），几小时后再填 notes 发布」。该仓库 25 条 release 的 `created_at` 全部早于 `published_at`（差几十分钟到十几小时），`dsh-v0.2.1-alpha.1` 的 `created_at` 与 `commits/master` 上 PR #5648 的 merge 时间精确到秒一致。而 `releases.atom` 会把未发布的草稿一并输出，草稿窗口内 feed 显示的就是 merge 标题。
+- **判据**：`api.github.com/repos/<owner>/<repo>/releases` 只返回已发布 release；某条目只存在于 atom、API 里没有、`/releases/tags/<tag>` 404，即从未发布的草稿（如 `dsh-v0.1.5-rc.3`，自 2026-09-22 挂到现在）。
+- **解法**：路由层过滤正文为 commit 标题的条目（`lib/routes/dsh/changelog.ts` 的 `isCommitSubjectBody`）；彻底方案是与 releases API 交叉校验、只保留已发布 tag。
+- **注意**：cheerio `$('content').text()` 返回的是**已解码的 HTML 字符串**（含 `<p>` 等标签），做文本匹配前需先剥标签，否则 `^Merge` 匹配不上。

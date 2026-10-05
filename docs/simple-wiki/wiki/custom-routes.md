@@ -46,7 +46,7 @@ context: 1
 
 | 命名空间          | 路径                                     | 说明                                              |
 | ----------------- | ---------------------------------------- | ------------------------------------------------- |
-| `/claude`         | `/claude/blog`、`/claude/code-changelog` | Anthropic 官方博客、Claude Code CLI 更新日志      |
+| `/claude`         | `/claude/blog`、`/claude/code/changelog` | Anthropic 官方博客、Claude Code CLI 更新日志      |
 | `/dsh`            | `/dsh/changelog`                         | DeepSeek Harness 发版记录（GitHub releases atom） |
 | `/humanlayer`     | `/humanlayer/blog`                       | HumanLayer 官方博客                               |
 | `/bangumi.online` | —                                        | 番组在线订阅源                                    |
