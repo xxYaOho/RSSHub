@@ -9,6 +9,7 @@
 .log
 .now
 .roomodes
+.tmp/
 .vercel
 .vscode
 .windsurfrules
