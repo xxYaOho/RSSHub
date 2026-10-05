@@ -61,3 +61,9 @@ context: 1
 - **判据**：`api.github.com/repos/<owner>/<repo>/releases` 只返回已发布 release；某条目只存在于 atom、API 里没有、`/releases/tags/<tag>` 404，即从未发布的草稿（如 `dsh-v0.1.5-rc.3`，自 2026-09-22 挂到现在）。
 - **解法**：路由层过滤正文为 commit 标题的条目（`lib/routes/dsh/changelog.ts` 的 `isCommitSubjectBody`）；彻底方案是与 releases API 交叉校验、只保留已发布 tag。
 - **注意**：cheerio `$('content').text()` 返回的是**已解码的 HTML 字符串**（含 `<p>` 等标签），做文本匹配前需先剥标签，否则 `^Merge` 匹配不上。
+
+## 单测大批量失败：缺 `assets/build/routes.json` 与沙箱端口限制
+
+- **现象**：`npx vitest run` 出现 20+ 个测试文件失败，报 `Cannot find module '/assets/build/routes.json' imported from lib/registry.ts`（`NODE_ENV=test` 时注册表读该产物），或 `listen EPERM 0.0.0.0`（测试自建 HTTP server 被沙箱拒）。
+- **解法**：跑单测前先 `pnpm build:routes` 生成 `assets/build/`（该目录已 gitignore，不在仓库里）；本机在沙箱内跑会大面积 `EPERM`，需在沙箱外执行。
+- **剩余环境类失败**：`lib/utils/playwright*.test.ts`（5 个）报 `Executable doesn't exist at .../ms-playwright/chromium_headless_shell-*`，需 `npx playwright install`；`lib/middleware/parameter.test.ts > fulltext` 走真实网络（`github.com/...`），并发全量跑时可能超 60s 超时，单文件跑稳定通过。
