@@ -6,6 +6,13 @@ import { parseDate } from '@/utils/parse-date';
 
 const repoUrl = 'https://github.com/deepseek-ai/deepseek-harness';
 
+// GitHub occasionally keeps a stale entry in releases.atom for a release that was deleted
+// or unpublished; its <content> is just the merge commit subject written by release automation
+// (e.g. "Merge pull request #1234 from ..."), and the linked tag page 404s. Drop those.
+const commitSubjectPattern = /^Merge (?:pull request|branch|remote-tracking branch)\b/;
+
+const isCommitSubjectBody = (html: string): boolean => commitSubjectPattern.test(html.replaceAll(/<[^>]+>/g, '').trim());
+
 const handler = async (): Promise<Data> => {
     // GitHub serves a public Atom feed for releases; entry content is the release notes as HTML
     const response = await ofetch(`${repoUrl}/releases.atom`, { parseResponse: (txt) => txt });
@@ -21,7 +28,8 @@ const handler = async (): Promise<Data> => {
                 link: $entry.find('link').attr('href'),
                 pubDate: parseDate($entry.find('updated').text()),
             };
-        });
+        })
+        .filter((item) => !isCommitSubjectBody(item.description ?? ''));
 
     return {
         title: 'DeepSeek Harness Releases',
