@@ -9,7 +9,7 @@ export const route: Route = {
     parameters: { id: '专栏 id, 可在对应专栏页 URL 中找到' },
     features: {
         requireConfig: false,
-        requirePuppeteer: true,
+        requirePuppeteer: false,
         antiCrawler: false,
         supportBT: false,
         supportPodcast: false,
@@ -44,7 +44,7 @@ async function handler(ctx) {
         title: `Foresight News - ${column}`,
         link: currentUrl,
         description: `${column} - Foresight News`,
-        language: 'zh-CN' as Language,
+        language: 'zh-CN' as const satisfies Language,
         image,
         icon,
         logo: icon,

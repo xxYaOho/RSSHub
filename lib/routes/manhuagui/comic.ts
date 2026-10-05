@@ -1,4 +1,4 @@
-import { type CheerioAPI, load } from 'cheerio';
+import { load } from 'cheerio';
 import LZString from 'lz-string';
 
 import type { Route } from '@/types';
@@ -81,10 +81,11 @@ async function handler(ctx) {
 
     const chapterCnt = Number(ctx.req.param('chapterCnt') || 0);
     const { data } = await got(`${baseUrl}/comic/${id}/`);
-    const $ = load(data) as CheerioAPI & { pubDate: Date; newChapterCnt: number };
+    const $ = Object.assign(load(data), { pubDate: new Date(0), newChapterCnt: 0 });
 
-    if ($('#__VIEWSTATE').length > 0) {
-        const n = LZString.decompressFromBase64($('#__VIEWSTATE').val() as string);
+    const viewState = $('#__VIEWSTATE').attr('value');
+    if (viewState) {
+        const n = LZString.decompressFromBase64(viewState);
         if (n) {
             $('#erroraudit_show').replaceWith(n);
             $('#__VIEWSTATE').remove();

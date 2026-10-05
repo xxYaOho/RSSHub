@@ -58,11 +58,11 @@ async function fetchNewsItemsByCategory(categoryId: string): Promise<NewsItem[]>
                 intranetOnly,
             };
         })
-        .filter(Boolean) as NewsItem[];
+        .filter((entry) => entry !== null);
 }
 
 async function enrichNewsItemWithDetails(item: NewsItem, refererUrl: string): Promise<DataItem> {
-    const dataItem = item.item as DataItem;
+    const dataItem = item.item;
 
     if (item.intranetOnly || !dataItem.link) {
         return dataItem;
@@ -124,7 +124,7 @@ async function handler(ctx: Context) {
     const categoryInfo = categoryMap.get(type);
 
     if (!categoryInfo) {
-        const validTypes = [...categoryMap.keys().toArray()].join(', ');
+        const validTypes = categoryMap.keys().toArray().join(', ');
         throw new Error(`Invalid type: ${type}. Valid types are: ${validTypes}`);
     }
 

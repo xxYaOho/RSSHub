@@ -67,7 +67,7 @@ const allowedBrowserRequestTypes = new Set(['document', 'script', 'xhr', 'fetch'
 const browserResponseTimeout = 45000;
 const browserCloseTimeout = 90000;
 
-const getErrorMessage = (error: unknown) => (error instanceof Error ? error.message : String(error));
+const getErrorMessage = (cause: unknown) => (cause instanceof Error ? cause.message : String(cause));
 
 const isVideoListApiResponse = (response: BrowserResponse) => {
     const request = response.request();
@@ -194,7 +194,7 @@ async function fetchVideoListFromBrowser(uid: string): Promise<VideoListData> {
 
     try {
         const response = await waitForVideoListResponseFromVideoPage(page, videoUrl);
-        const data = (await response.json()) as VideoListResponse;
+        const data: VideoListResponse = await response.json();
         if (data.code) {
             logger.error(JSON.stringify(data.data));
             throw new Error(`Got error code ${data.code} while fetching in browser mode: ${data.message}`);

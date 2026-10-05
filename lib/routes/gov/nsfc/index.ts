@@ -67,7 +67,7 @@ async function handler(ctx) {
     }
 
     const rootUrl = 'https://www.nsfc.gov.cn';
-    const currentUrl = new URL((thePath.endsWith('/more') ? `${thePath}.htm` : thePath) || 'publish/portal0/tab442/', rootUrl).href;
+    const currentUrl = `${rootUrl}${(thePath.endsWith('/more') ? `${thePath}.htm` : thePath) || '/publish/portal0/tab442/'}`;
 
     const { data: response } = await got(currentUrl);
 
@@ -112,13 +112,13 @@ async function handler(ctx) {
     return {
         item: items,
         title: `国家自然科学基金委员会 - ${$('#ess_essBREADCRUMB_lblBreadCrumb a.break')
-            .toArray()
             .slice(1)
+            .toArray()
             .map((a) => $(a).text())
             .join(' - ')}`,
         link: currentUrl,
         description: $('meta[name="DESCRIPTION"]').prop('content'),
-        language: 'zh-CN' as Language,
+        language: 'zh-CN' as const satisfies Language,
         subtitle: $('meta[name="KEYWORDS"]').prop('content'),
         author: $('meta[name="AUTHOR"]').prop('content'),
     };

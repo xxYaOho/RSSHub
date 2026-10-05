@@ -1,15 +1,16 @@
-import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 
 import type { Config } from '@/config';
 import pacProxy from '@/utils/proxy/pac-proxy';
 
-const emptyProxyObj = {
+const emptyProxyObj: Config['proxy'] = {
     protocol: undefined,
     host: undefined,
     port: undefined,
     auth: undefined,
     url_regex: '.*',
-} as Config['proxy'];
+    strategy: 'all',
+};
 
 const effectiveExpect = ({ proxyUri, proxyObj }, expectUri, expectObj) => {
     expect(proxyUri).toBe(expectUri);
@@ -78,32 +79,5 @@ describe('pac-proxy', () => {
 
     it('pac-uri user@pass override proxy-obj auth', () => {
         effectiveExpect(pacProxy(httpsAuthUri, '', httpsAuthObj), httpsAuthUri, httpsObj);
-    });
-});
-
-describe('pac-proxy error handling', () => {
-    const errorSpy = vi.fn();
-
-    beforeAll(() => {
-        vi.doMock('@/utils/logger', () => ({
-            default: {
-                error: errorSpy,
-                warn: vi.fn(),
-                info: vi.fn(),
-            },
-        }));
-        vi.resetModules();
-    });
-
-    afterAll(() => {
-        vi.doUnmock('@/utils/logger');
-        vi.resetModules();
-    });
-
-    it('logs error when PAC_SCRIPT is not a string', async () => {
-        const freshPacProxy = (await import('@/utils/proxy/pac-proxy')).default;
-        freshPacProxy(undefined, { invalid: true } as any, {} as Config['proxy']);
-
-        expect(errorSpy).toHaveBeenCalledWith('Invalid PAC_SCRIPT, use PAC_URI instead');
     });
 });

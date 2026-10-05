@@ -8,7 +8,7 @@ import { parseDate } from '@/utils/parse-date';
 import { renderAudioMedia } from './templates/audio-media';
 import { renderChartMedia } from './templates/chart-media';
 import { renderImageFigure } from './templates/image-figure';
-import { type LedeMedia, renderLedeMedia } from './templates/lede-media';
+import { renderLedeMedia } from './templates/lede-media';
 import { renderVideoMedia } from './templates/video-media';
 
 const rootUrl = 'https://www.bloomberg.com/feeds';
@@ -79,7 +79,7 @@ const parseArticle = (item) =>
         if (group) {
             const { page, link } = group;
             if (Object.hasOwn(apiEndpoints, page)) {
-                const api = { ...apiEndpoints[page] };
+                const api = apiEndpoints[page];
                 let res;
 
                 try {
@@ -87,8 +87,7 @@ const parseArticle = (item) =>
                     res = await redirectGot(apiUrl);
                 } catch (error) {
                     // fallback
-                    const err = error as Error;
-                    if (err.name && ['HTTPError', 'RequestError', 'FetchError'].includes(err.name)) {
+                    if (error instanceof Error && ['HTTPError', 'RequestError', 'FetchError'].includes(error.name)) {
                         try {
                             res = await redirectGot(item.link);
                         } catch {
@@ -172,16 +171,24 @@ const parseVideoPage = async (res, api, item) => {
                 content: { url: video_story.video?.thumbnail.url || '' },
                 thumbnails: { url: video_story.video?.thumbnail.url || '' },
             },
-            category: (desc as any).keywords ?? [],
+            category: [],
         };
         return rss_item;
     }
     return item;
 };
 
+interface PhotoEssayArticle {
+    headline?: string;
+    canonical?: string;
+    id?: string;
+    body?: string;
+    authors?: Array<{ name: string }>;
+}
+
 const parsePhotoEssaysPage = async (res, api, item) => {
     const $ = load(res.data.html);
-    const article_json: Record<string, any> = {};
+    const article_json: PhotoEssayArticle = {};
     for (const e of $(api.sel).toArray()) {
         const raw = $(e).html();
         if (raw !== null) {
@@ -207,8 +214,7 @@ const parseReactRendererPage = async (res, api, item) => {
         return await parseStoryJson(res._data, item);
     } catch (error) {
         // fallback
-        const err = error as Error;
-        if (err.name && ['HTTPError', 'RequestError', 'FetchError'].includes(err.name)) {
+        if (error instanceof Error && ['HTTPError', 'RequestError', 'FetchError'].includes(error.name)) {
             return {
                 title: item.title,
                 link: item.link,
@@ -252,9 +258,9 @@ const processLedeMedia = async (story_json) => {
             description: story_json.ledeDescription?.replaceAll(capRegex, '') ?? '',
             credit: story_json.ledeCredit?.replaceAll(capRegex, '') ?? '',
             src: story_json.ledeImageUrl,
-            video: kind === 'video' && (await processVideo(story_json.ledeAttachment.bmmrId)),
+            video: kind === 'video' ? await processVideo(story_json.ledeAttachment.bmmrId) : undefined,
         };
-        return renderLedeMedia(media as unknown as LedeMedia);
+        return renderLedeMedia(media);
     }
     if (story_json.lede) {
         const lede = story_json.lede;
@@ -279,18 +285,20 @@ const processLedeMedia = async (story_json) => {
         }
         return '';
     }
-    if (story_json.type === 'Lede') {
-        const props = story_json.props;
-
-        const media = {
-            kind: props.media,
-            caption: props.caption?.replaceAll(capRegex, '') ?? '',
-            description: props.dek?.replaceAll(capRegex, '') ?? '',
-            credit: props.credit?.replaceAll(capRegex, '') ?? '',
-            src: props.url,
-        };
-        return renderLedeMedia(media);
+    if (story_json.type !== 'Lede') {
+        return;
     }
+
+    const props = story_json.props;
+
+    const media = {
+        kind: props.media,
+        caption: props.caption?.replaceAll(capRegex, '') ?? '',
+        description: props.dek?.replaceAll(capRegex, '') ?? '',
+        credit: props.credit?.replaceAll(capRegex, '') ?? '',
+        src: props.url,
+    };
+    return renderLedeMedia(media);
 };
 
 const processBody = async (body_html, story_json) => {
@@ -307,12 +315,13 @@ const processBody = async (body_html, story_json) => {
     for await (const e of $('figure')) {
         const imageType = $(e).data('image-type');
         const type = $(e).data('type');
+        const figureId = $(e).data('id') as string | number;
 
         let new_figure = '';
         if (imageType === 'audio') {
             let audio = {};
             if (story_json.audios) {
-                const attachment = story_json.audios.find((a) => a.id.toString() === ($(e).data('id') as string | number).toString());
+                const attachment = story_json.audios.find((a) => a.id.toString() === figureId.toString());
                 audio = {
                     img: attachment.image?.url || $(e).find('img').attr('src'),
                     src: attachment.url || $(e).find('audio source').attr('src'),
@@ -333,14 +342,14 @@ const processBody = async (body_html, story_json) => {
             new_figure = renderAudioMedia(audio);
         } else if (imageType === 'video') {
             if (story_json.videoAttachments) {
-                const attachment = story_json.videoAttachments[$(e).data('id') as string];
+                const attachment = story_json.videoAttachments[figureId];
                 const video = await processVideo(attachment.bmmrId);
                 new_figure = renderVideoMedia(video);
             }
         } else if (imageType === 'photo' || imageType === 'image' || type === 'image') {
             let src, alt;
             if (story_json.imageAttachments) {
-                const attachment = story_json.imageAttachments[$(e).data('id') as string];
+                const attachment = story_json.imageAttachments[figureId];
                 alt = attachment?.alt || $(e).find('img').attr('alt')?.trim();
                 src = attachment?.baseUrl;
             } else {

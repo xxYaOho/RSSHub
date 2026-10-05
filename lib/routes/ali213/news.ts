@@ -21,7 +21,7 @@ export const handler = async (ctx: Context): Promise<Data> => {
 
     const response = await ofetch(targetUrl);
     const $: CheerioAPI = load(response);
-    const language: string = $('html').prop('lang') ?? 'zh-CN';
+    const language = ($('html').prop('lang') ?? 'zh-CN') as Language;
 
     let items: DataItem[] = $('div.n_lone')
         .slice(0, limit)
@@ -66,14 +66,14 @@ export const handler = async (ctx: Context): Promise<Data> => {
                 },
                 image: imageSrc,
                 banner: imageSrc,
-                language: language as Language,
+                language,
             };
         });
 
     items = (
         await Promise.all(
             items.map((item) => {
-                if (!item.link && typeof item.link !== 'string') {
+                if (item.link === undefined) {
                     return item;
                 }
 
@@ -83,7 +83,7 @@ export const handler = async (ctx: Context): Promise<Data> => {
                         const $$: CheerioAPI = load(detailResponse);
 
                         const title: string = $$('h1.newstit').text();
-                        const image: string | undefined = $$('div#Content img').first().prop('src');
+                        const image: string | undefined = $$('div#Content img').prop('src');
 
                         const mediaContent: Cheerio<Element> = $$('div#Content p span img');
                         const media: Record<string, Record<string, string>> = {};
@@ -92,24 +92,26 @@ export const handler = async (ctx: Context): Promise<Data> => {
                             mediaContent.each((_, el) => {
                                 const $$el: Cheerio<Element> = $$(el);
 
-                                const pEl: Cheerio<Element> = $$el.closest('p') as Cheerio<Element>;
+                                const pEl = $$el.closest('p');
 
                                 const mediaUrl: string | undefined = $$el.prop('src');
                                 const mediaType: string | undefined = mediaUrl?.split(/\./).pop();
 
-                                if (mediaType && mediaUrl) {
-                                    media[mediaType] = { url: mediaUrl };
-
-                                    pEl.replaceWith(
-                                        renderDescription({
-                                            images: [
-                                                {
-                                                    src: mediaUrl,
-                                                },
-                                            ],
-                                        })
-                                    );
+                                if (!(mediaType && mediaUrl)) {
+                                    return;
                                 }
+
+                                media[mediaType] = { url: mediaUrl };
+
+                                pEl.replaceWith(
+                                    renderDescription({
+                                        images: [
+                                            {
+                                                src: mediaUrl,
+                                            },
+                                        ],
+                                    })
+                                );
                             });
                         }
 
@@ -137,11 +139,11 @@ export const handler = async (ctx: Context): Promise<Data> => {
                             pubDate: timezone(parseDate($$('div.newstag_l').text().split(/\s/, 1)[0]), 8),
                             content: {
                                 html: description,
-                                text: $$('div#Content').html() ?? '',
+                                text: $$('div#Content').html(),
                             },
                             image,
                             banner: image,
-                            language: language as Language,
+                            language,
                             media: Object.keys(media).length > 0 ? media : undefined,
                             _extra: {
                                 links: extraLinks.length > 0 ? extraLinks : undefined,
@@ -167,7 +169,7 @@ export const handler = async (ctx: Context): Promise<Data> => {
         allowEmpty: true,
         image: feedImage,
         author,
-        language: language as Language,
+        language,
         id: targetUrl,
     };
 };

@@ -1,5 +1,7 @@
 import { webcrypto } from 'node:crypto';
 
+import { FetchError } from 'ofetch';
+
 import { config } from '@/config';
 import type { Route } from '@/types';
 import cache from '@/utils/cache';
@@ -35,6 +37,23 @@ type ComingSoonResponse = {
     msg?: string;
     message?: string;
     reason?: string;
+};
+
+interface UpstreamError {
+    response?: {
+        status?: number;
+    };
+}
+
+const buildFetchError = (error: UpstreamError): Error => {
+    const status = error?.response?.status;
+    if (status === 429) {
+        return new Error('Douban 请求过于频繁（429）。请稍后重试，或降低请求频率。');
+    }
+    if (status === 403) {
+        return new Error('Douban 拒绝访问（403），可能触发反爬策略。请稍后重试。');
+    }
+    return new Error('Douban 数据请求失败，可能触发反爬或限频，请稍后重试。');
 };
 
 const signRequest = async (url: string, ts: string, method = 'GET'): Promise<string> => {
@@ -79,14 +98,11 @@ const getSortTimestamp = (pubdate?: string[]): number => {
 };
 
 const getWishCount = (wishCount?: number | string): number => {
-    if (typeof wishCount === 'number') {
-        return wishCount;
+    if (wishCount === undefined) {
+        return 0;
     }
-    if (typeof wishCount === 'string') {
-        const parsed = Number(wishCount);
-        return Number.isNaN(parsed) ? 0 : parsed;
-    }
-    return 0;
+    const parsed = Number(wishCount);
+    return Number.isNaN(parsed) ? 0 : parsed;
 };
 
 const renderDescription = (subject: { intro?: string; wish_count?: number | string }): string => {
@@ -97,17 +113,6 @@ const renderDescription = (subject: { intro?: string; wish_count?: number | stri
         return `${wishCountText}，${introText}`;
     }
     return wishCountText || introText;
-};
-
-const buildFetchError = (error: unknown): Error => {
-    const status = (error as { response?: { status?: number } })?.response?.status;
-    if (status === 429) {
-        return new Error('Douban 请求过于频繁（429）。请稍后重试，或降低请求频率。');
-    }
-    if (status === 403) {
-        return new Error('Douban 拒绝访问（403），可能触发反爬策略。请稍后重试。');
-    }
-    return new Error('Douban 数据请求失败，可能触发反爬或限频，请稍后重试。');
 };
 
 export const route: Route = {
@@ -150,7 +155,7 @@ async function handler(ctx) {
     const requestCount = Number.isNaN(rawCount) || rawCount <= 0 ? 10 : rawCount;
 
     const ts = new Date().toISOString().slice(0, 10).replaceAll('-', '');
-    const searchParams: Record<string, string | number> = {
+    const searchParams = {
         start: 0,
         count: requestCount,
         sortby: 'hot',
@@ -161,9 +166,9 @@ async function handler(ctx) {
     };
 
     const cacheKey = `douban:tv:coming:${requestCount}`;
-    const data = (await cache.tryGet(
+    const data = await cache.tryGet(
         cacheKey,
-        async () => {
+        async (): Promise<ComingSoonResponse> => {
             try {
                 const response = await got({
                     method: 'get',
@@ -174,14 +179,14 @@ async function handler(ctx) {
                         'User-Agent': apiClientUa,
                     },
                 });
-                return response.data as ComingSoonResponse;
+                return response.data;
             } catch (error) {
-                throw buildFetchError(error);
+                throw buildFetchError(error instanceof FetchError ? error : {});
             }
         },
         config.cache.routeExpire,
         false
-    )) as ComingSoonResponse;
+    );
 
     if (!Array.isArray(data.subjects)) {
         const details = data.msg || data.message || data.reason;

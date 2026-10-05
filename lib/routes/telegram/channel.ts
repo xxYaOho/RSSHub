@@ -197,19 +197,19 @@ async function handler(ctx) {
         resourceUrl,
         async () => {
             try {
-                return await ofetch(resourceUrl);
+                return await ofetch<string>(resourceUrl);
             } catch (error) {
                 if (error instanceof FetchError && error.statusCode) {
                     throw error;
                 }
-                return await ofetch(resourceUrl.replace('https://t.me/', 'https://telegram.me/'));
+                return await ofetch<string>(resourceUrl.replace('https://t.me/', 'https://telegram.me/'));
             }
         },
         config.cache.routeExpire,
         false
     );
 
-    const $ = load(data as string);
+    const $ = load(data);
 
     /*
      * Since 2024/4/20, t.me/s/ mistakenly have every '&' in **hyperlinks** replaced by '&amp;'.
@@ -252,7 +252,7 @@ async function handler(ctx) {
             .toArray()
             .map((item) => {
                 const $item = $(item);
-                let extra: { links: Array<{ type: string; url: string | undefined }> } | null = null;
+                let extra: DataItem['_extra'];
 
                 /* message types */
                 let msgTypes: any[] = [];
@@ -349,7 +349,7 @@ async function handler(ctx) {
                             links: [
                                 {
                                     type: 'repost',
-                                    url: userLink,
+                                    url: userLink ?? '',
                                 },
                             ],
                         };
@@ -368,7 +368,7 @@ async function handler(ctx) {
                     const viaBotObj = replyObj.find('.tgme_widget_message_via_bot');
                     const viaBotText = viaBotObj.length ? ` via <b>${viaBotObj.text()}</b>` : '';
                     const replyLinkHref = replyObj.attr('href');
-                    const replyLink = replyLinkHref!.length ? replyLinkHref : '';
+                    const replyLink = replyLinkHref!.length ? replyLinkHref! : '';
                     const replyMetaTextObj = replyObj.find('.tgme_widget_message_metatext');
                     const replyMetaText = replyMetaTextObj.length ? `<p><small>${replyMetaTextObj.html()}</small></p>` : '';
                     const replyTextObj = replyObj.find('.tgme_widget_message_text');
@@ -507,10 +507,12 @@ async function handler(ctx) {
                             }
                             tag_media += backgroundUrlSrc ? `<img ${attrs.join(' ')}>` : '';
                         }
-                        if (tag_media) {
-                            tag_media_all += tag_media;
-                            $node.find('.message_media_not_supported').remove();
+                        if (!tag_media) {
+                            return;
                         }
+
+                        tag_media_all += tag_media;
+                        $node.find('.message_media_not_supported').remove();
                     });
                     return tag_media_all;
                 };
@@ -622,16 +624,18 @@ async function handler(ctx) {
                         attachmentTitle += _attachmentTitle;
                         attachmentHtml += _attachmentHtml ? `<blockquote>${_attachmentHtml}</blockquote>` : '';
                         const wrapNext = $wrap.next('.tgme_widget_message_text');
-                        if (wrapNext.length) {
-                            const captionHtml = wrapNext.html();
-                            if (captionHtml!.length) {
-                                attachmentHtml += `<p>${captionHtml}</p>`;
-                            }
-                            // remove them, avoid being duplicated
-                            wrapNext.each((_, caption) => {
-                                $(caption).remove();
-                            });
+                        if (!wrapNext.length) {
+                            return;
                         }
+
+                        const captionHtml = wrapNext.html();
+                        if (captionHtml!.length) {
+                            attachmentHtml += `<p>${captionHtml}</p>`;
+                        }
+                        // remove them, avoid being duplicated
+                        wrapNext.each((_, caption) => {
+                            $(caption).remove();
+                        });
                     });
                 }
 
@@ -761,7 +765,7 @@ async function handler(ctx) {
                     _extra: extra,
                 };
             })
-            .filter(Boolean)
-            .toReversed() as unknown as DataItem[],
+            .filter((item) => item !== null)
+            .toReversed(),
     };
 }

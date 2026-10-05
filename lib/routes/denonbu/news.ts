@@ -126,8 +126,23 @@ async function getToken(): Promise<string> {
     if (!token) {
         throw new Error('Failed to get token');
     }
-    cache.set(CACHE_TOKEN_KEY, token, expires ? expires - Number(Date.now()) / 1000 - 1 : 3600);
+    cache.set(CACHE_TOKEN_KEY, token, expires ? expires - Date.now() / 1000 - 1 : 3600);
     return token;
+}
+
+interface NewsItem {
+    source_type: string;
+    id: number;
+    sid?: number;
+    uid?: string;
+    title?: string;
+    body: string;
+    post_date: string;
+    media?: string[];
+    account?: {
+        account_id?: string;
+    };
+    category: Array<{ name: string }>;
 }
 
 function buildLink(body: any): string | null {
@@ -170,7 +185,7 @@ async function handler(ctx: Context): Promise<Data> {
         })
     ).payload.items;
 
-    const items = data.map((item) => {
+    const items = data.map((item: NewsItem) => {
         const { title, body, post_date, category, media } = item;
         const link = buildLink(item);
         const result: DataItem = {
@@ -179,15 +194,8 @@ async function handler(ctx: Context): Promise<Data> {
             pubDate: timezone(parseDate(post_date), 9),
             category: category.map((x) => x.name),
             link: link ?? undefined,
+            image: media?.[0],
         };
-
-        if (media?.[0]) {
-            const firstMedia = media[0];
-            const imageUrl = typeof firstMedia === 'string' ? firstMedia : firstMedia?.url;
-            if (typeof imageUrl === 'string') {
-                result.image = imageUrl;
-            }
-        }
 
         return result;
     });

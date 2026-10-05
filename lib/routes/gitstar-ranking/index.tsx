@@ -4,9 +4,11 @@ import type { Element } from 'domhandler';
 import type { Context } from 'hono';
 import { renderToString } from 'hono/jsx/dom/server';
 
+import InvalidParameterError from '@/errors/types/invalid-parameter';
 import type { Data, DataItem, Language, Route } from '@/types';
 import { ViewType } from '@/types';
 import ofetch from '@/utils/ofetch';
+import { isValidHost } from '@/utils/valid-host';
 
 const renderDescription = ({ images, stargazersCount, language, description }) =>
     renderToString(
@@ -49,6 +51,10 @@ const renderDescription = ({ images, stargazersCount, language, description }) =
 
 export const handler = async (ctx: Context): Promise<Data> => {
     const { category = 'repositories' } = ctx.req.param();
+    if (!isValidHost(category)) {
+        throw new InvalidParameterError('Invalid category');
+    }
+
     const limit = Number(ctx.req.query('limit') ?? '100');
 
     const baseUrl = 'https://gitstar-ranking.com';
@@ -56,7 +62,7 @@ export const handler = async (ctx: Context): Promise<Data> => {
 
     const response = await ofetch(targetUrl);
     const $: CheerioAPI = load(response);
-    const language = $('html').attr('lang') ?? 'en';
+    const language = ($('html').attr('lang') ?? 'en') as Language;
 
     const items: DataItem[] = $('a.list-group-item')
         .slice(0, limit)
@@ -113,7 +119,7 @@ export const handler = async (ctx: Context): Promise<Data> => {
         item: items,
         allowEmpty: true,
         author: title.split(/-/).pop()?.trim(),
-        language: language as Language,
+        language,
         id: $('meta[property="og:url"]').attr('content'),
     };
 };

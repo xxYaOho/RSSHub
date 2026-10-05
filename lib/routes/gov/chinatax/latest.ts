@@ -57,8 +57,8 @@ async function handler() {
                     item.description = content('#fontzoom').html();
                     return item;
                 } catch (error) {
-                    if ((error as Error).name === 'HTTPError' || (error as Error).name === 'FetchError') {
-                        item.description = (error as Error).message;
+                    if (error instanceof Error && (error.name === 'HTTPError' || error.name === 'FetchError')) {
+                        item.description = error.message;
                         return item;
                     }
                     throw error;

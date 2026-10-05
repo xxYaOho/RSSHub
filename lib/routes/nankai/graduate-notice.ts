@@ -39,7 +39,7 @@ export const route: Route = {
         const $ = load(response);
 
         // 获取分类名称映射
-        const categoryMap: Record<string, string> = {
+        const categoryMap = {
             zxdt: '最新动态',
             '82': '综合信息',
             '83': '招生工作',
@@ -99,14 +99,16 @@ export const route: Route = {
                             const sudyfileAttr = ($el.attr('sudyfile-attr') || '{}').replaceAll("'", '"');
                             const sudyfileAttrJson = JSON.parse(sudyfileAttr);
                             const fileName = sudyfileAttrJson.title || '未命名文件.pdf';
-                            if (pdfSrc) {
-                                let pdfUrl = pdfSrc;
-                                if (!pdfUrl.startsWith('http')) {
-                                    pdfUrl = `${baseUrl}${pdfUrl}`;
-                                }
-                                // 替换PDF播放器为下载链接
-                                $el.replaceWith(`<p><a href="${pdfUrl}" target="_blank">📄 ${fileName}</a></p>`);
+                            if (!pdfSrc) {
+                                return;
                             }
+
+                            let pdfUrl = pdfSrc;
+                            if (!pdfUrl.startsWith('http')) {
+                                pdfUrl = `${baseUrl}${pdfUrl}`;
+                            }
+                            // 替换PDF播放器为下载链接
+                            $el.replaceWith(`<p><a href="${pdfUrl}" target="_blank">📄 ${fileName}</a></p>`);
                         });
                     }
 

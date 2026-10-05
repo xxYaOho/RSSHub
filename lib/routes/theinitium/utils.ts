@@ -3,7 +3,7 @@ import type { Context } from 'hono';
 
 import { config } from '@/config';
 import InvalidParameterError from '@/errors/types/invalid-parameter';
-import type { Language } from '@/types';
+import type { Data } from '@/types';
 import cache from '@/utils/cache';
 import logger from '@/utils/logger';
 import ofetch from '@/utils/ofetch';
@@ -16,7 +16,7 @@ const GHOST_API_BASE = 'https://production-initium-media.ghost.io/ghost/api/cont
 const GHOST_CONTENT_KEY = 'a44a0409c222328d39e2c75293';
 
 // Old channel slugs → Ghost tag slugs mapping
-export const CHANNEL_TAG_MAP: Record<string, string> = {
+export const CHANNEL_TAG_MAP = {
     latest: '', // no filter = latest
     whatsnew: 'whatsnew',
     'news-brief': 'whatsnew',
@@ -30,7 +30,7 @@ export const CHANNEL_TAG_MAP: Record<string, string> = {
     report: 'report',
     'daily-brief': 'daily-brief',
     weekly: 'weekly',
-};
+} satisfies Record<string, string>;
 
 // Ghost uses a language-based tagging system:
 //   - zh-hant (Traditional Chinese): uses base tag slug, e.g. "whatsnew", with internal tag #zh-hant
@@ -65,7 +65,7 @@ interface GhostPost {
     primary_tag?: { name: string; slug: string };
 }
 
-interface GhostResponse {
+type GhostResponse = {
     posts: GhostPost[];
     meta: {
         pagination: {
@@ -75,15 +75,15 @@ interface GhostResponse {
             total: number;
         };
     };
-}
+};
 
-export async function ghostFetch(endpoint: string, params: Record<string, string> = {}): Promise<any> {
+export async function ghostFetch(endpoint: string, params: Record<string, string> = {}): Promise<GhostResponse> {
     const url = new URL(`${GHOST_API_BASE}/${endpoint}/`);
     url.searchParams.set('key', GHOST_CONTENT_KEY);
     for (const [k, v] of Object.entries(params)) {
         url.searchParams.set(k, v);
     }
-    return await ofetch(url.href);
+    return await ofetch<GhostResponse>(url.href);
 }
 
 async function scrapeFullArticle(url: string, cookie: string): Promise<string | null> {
@@ -96,11 +96,8 @@ async function scrapeFullArticle(url: string, cookie: string): Promise<string | 
         });
         const $ = load(response);
         const article = $('article');
-        if (article.length === 0) {
-            return null;
-        }
         // If paywall CTA present, cookie didn't work — fall back to Ghost preview
-        if (article.find('.gh-post-upgrade-cta').length > 0) {
+        if (article.length === 0 || article.find('.gh-post-upgrade-cta').length > 0) {
             return null;
         }
         return article.html();
@@ -173,7 +170,7 @@ export async function postsToItems(posts: GhostPost[]) {
 
             // For paid articles with truncated content, scrape full text if cookie available
             if (!post.access && memberCookie) {
-                const fullHtml = (await cache.tryGet(`theinitium:full:${post.slug}`, () => scrapeFullArticle(post.url, memberCookie) as Promise<string>, config.cache.contentExpire)) as string | null;
+                const fullHtml = await cache.tryGet(`theinitium:full:${post.slug}`, () => scrapeFullArticle(post.url, memberCookie), config.cache.contentExpire);
                 if (fullHtml) {
                     description = cleanGhostHtml(fullHtml);
                 }
@@ -181,14 +178,14 @@ export async function postsToItems(posts: GhostPost[]) {
 
             return {
                 title: post.title,
-                author: authors.join(', ') || post.primary_author?.name || '',
+                author: authors.join(', ') || post.primary_author?.name,
                 category: categories,
                 description,
                 link: post.url,
                 pubDate: parseDate(post.published_at),
                 updated: parseDate(post.updated_at),
                 guid: post.uuid,
-                banner: post.feature_image ?? undefined,
+                banner: post.feature_image,
             };
         })
     );
@@ -196,7 +193,7 @@ export async function postsToItems(posts: GhostPost[]) {
     return items;
 }
 
-export const processFeed = async (model: string, ctx: Context) => {
+export const processFeed = async (model: string, ctx: Context): Promise<Data> => {
     const type = ctx.req.param('type') ?? 'latest';
     const language = ctx.req.param('language') ?? '';
 
@@ -241,21 +238,18 @@ export const processFeed = async (model: string, ctx: Context) => {
 
     const cacheKey = `theinitium:ghost:${model}:${type}:${language}`;
     // Use routeExpire (5 min default) and refresh=false so cache actually expires
-    const data = (await cache.tryGet(
+    const data = await cache.tryGet(
         cacheKey,
         async () => {
-            const params: Record<string, string> = {
+            const baseParams = {
                 include: 'tags,authors',
                 limit: '20',
             };
-            if (filter) {
-                params.filter = filter;
-            }
-            return await ghostFetch('posts', params);
+            return await ghostFetch('posts', filter ? { ...baseParams, filter } : baseParams);
         },
         config.cache.routeExpire,
         false
-    )) as GhostResponse;
+    );
 
     const items = await postsToItems(data.posts);
 
@@ -304,7 +298,7 @@ export const processFeed = async (model: string, ctx: Context) => {
         title: `端傳媒 - ${displayName}`,
         link: listLink,
         icon: 'https://theinitium.com/favicon.ico',
-        language: (language === 'zh-hans' ? 'zh-CN' : 'zh-TW') as Language,
+        language: language === 'zh-hans' ? 'zh-CN' : 'zh-TW',
         item: items,
     };
 };

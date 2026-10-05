@@ -30,14 +30,14 @@ export const route: Route = {
         },
     ],
     name: '本科教学信息网通知',
-    maintainers: ['AhsokaTano26'],
+    maintainers: ['El-Chiang', 'Hagb', 'AhsokaTano26'],
     handler,
 };
 
 async function handler(ctx) {
     const { path = 'index/tzgg' } = ctx.req.param();
     const baseUrl = 'http://jwc.cqu.edu.cn';
-    const url = new URL(`${path}.htm`, baseUrl).href;
+    const url = `${baseUrl}/${path}.htm`;
 
     const response = await ofetch(url);
     const $ = load(response);
@@ -51,7 +51,7 @@ async function handler(ctx) {
             return {
                 title: a.attr('title')!,
                 link,
-                pubDate: parseDate($item.find('span.fr').text()), // 假设日期格式是YYYY-MM-DD
+                pubDate: parseDate($item.find('span.fr').text()),
             };
         });
 

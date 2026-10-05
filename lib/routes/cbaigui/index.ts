@@ -1,6 +1,6 @@
 import { load } from 'cheerio';
 
-import type { Language, Route } from '@/types';
+import type { Route } from '@/types';
 import got from '@/utils/got';
 import { parseDate } from '@/utils/parse-date';
 
@@ -28,7 +28,7 @@ async function handler(ctx) {
     let filterName;
 
     const path = ctx.req.param('path') ?? '';
-    const currentUrl = new URL(`/${path}`, rootUrl).href;
+    const currentUrl = `${rootUrl}/${path}`;
     let apiUrl = new URL(`${apiSlug}/posts?_embed=true&per_page=${limit}`, rootUrl).href;
 
     const filterMatches = path.match(/^post-(tag|category)\/(.*)$/);
@@ -107,7 +107,7 @@ async function handler(ctx) {
         title: `纪妖${filterName ? ` - ${filterName}` : ''}`,
         link: currentUrl,
         description: $('meta[name="description"]').prop('content'),
-        language: 'zh-CN' as Language,
+        language: 'zh-CN' as const,
         image: $('meta[name="msapplication-TileImage"]').prop('content'),
         icon,
         logo: icon,

@@ -214,7 +214,7 @@ export const handler = async (ctx: Context): Promise<Data> => {
     const idObj = idOptions.find((option) => option.label === paramId || option.value === paramId);
 
     const type: number = typeObj.value;
-    const id: string | undefined = idObj ? String(idObj.value) : undefined;
+    const id: string | undefined = idObj?.value;
 
     const baseUrl = 'https://www.iresearch.com.cn';
     const imageBaseUrl = 'https://pic.iresearch.cn';
@@ -244,7 +244,7 @@ export const handler = async (ctx: Context): Promise<Data> => {
                 return item.sTitle ?? item.Content;
             })();
 
-        const images: string[] = [item.BigImg, item.SmallImg, item.reportpic].filter(Boolean) as string[];
+        const images: string[] = [item.BigImg, item.SmallImg, item.reportpic].filter(Boolean);
         const description: string | undefined = renderDescription({
             images: images.map((src) => ({
                 src,
@@ -348,7 +348,7 @@ export const handler = async (ctx: Context): Promise<Data> => {
                         },
                         (_, index) => `${imageBaseUrl}/${typeObj.imageSlug}/${item.detailId}/${index + 1}.jpg`
                     ),
-                ].filter(Boolean) as string[];
+                ].filter(Boolean);
                 const description: string | undefined = renderDescription({
                     images: images.map((src) => ({
                         src,

@@ -3,16 +3,22 @@ import { load } from 'cheerio';
 import type { Element } from 'domhandler';
 import type { Context } from 'hono';
 
+import InvalidParameterError from '@/errors/types/invalid-parameter';
 import type { Data, DataItem, Language, Route } from '@/types';
 import { ViewType } from '@/types';
 import cache from '@/utils/cache';
 import ofetch from '@/utils/ofetch';
 import { parseDate } from '@/utils/parse-date';
+import { isValidHost } from '@/utils/valid-host';
 
 import { renderDescription } from './templates/description';
 
 export const handler = async (ctx: Context): Promise<Data> => {
     const { id = 'tzgg' } = ctx.req.param();
+    if (!isValidHost(id)) {
+        throw new InvalidParameterError('Invalid id');
+    }
+
     const limit = Number(ctx.req.query('limit') ?? '10');
 
     const baseUrl = 'https://hitgs.hit.edu.cn';
@@ -20,7 +26,7 @@ export const handler = async (ctx: Context): Promise<Data> => {
 
     const response = await ofetch(targetUrl);
     const $: CheerioAPI = load(response);
-    const language = $('html').attr('lang') ?? 'zh';
+    const language = ($('html').attr('lang') ?? 'zh') as Language;
 
     let items: DataItem[] = $('li.news, div.tbt17')
         .slice(0, limit)
@@ -46,7 +52,7 @@ export const handler = async (ctx: Context): Promise<Data> => {
                     text: description,
                 },
                 updated: parseDate(upDatedStr),
-                language: language as Language,
+                language,
             };
 
             return processedItem;
@@ -78,16 +84,14 @@ export const handler = async (ctx: Context): Promise<Data> => {
                         text: description,
                     },
                     updated: upDatedStr ? parseDate(upDatedStr) : item.updated,
-                    language: language as Language,
+                    language,
                 };
 
-                const $enclosureEl: Cheerio<Element> = $$('a[sudyfile-attr]')
-                    .filter((_, el) => {
-                        const $el: Cheerio<Element> = $$(el);
+                const $enclosureEl: Cheerio<Element> = $$('a[sudyfile-attr]').filter((_, el) => {
+                    const $el: Cheerio<Element> = $$(el);
 
-                        return !$el.attr('href')?.endsWith('htm');
-                    })
-                    .first();
+                    return !$el.attr('href')?.endsWith('htm');
+                });
 
                 const enclosureUrl: string | undefined = $enclosureEl.attr('href');
 
@@ -122,7 +126,7 @@ export const handler = async (ctx: Context): Promise<Data> => {
         allowEmpty: true,
         image: $('div.foot-logo img').attr('src'),
         author,
-        language: language as Language,
+        language,
         id: targetUrl,
     };
 };

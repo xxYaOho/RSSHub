@@ -41,7 +41,7 @@ export const route: Route = {
     handler,
 };
 
-const CATEGORY_CONFIG: Record<string, { url: (keyword: string) => string; templateIds: string[] }> = {
+const CATEGORY_CONFIG = {
     all: {
         url: (keyword) => `https://m.search.naver.com/search.naver?ssc=tab.m.all&where=m&sm=mtb_opt&query=${encodeURIComponent(keyword)}&nso=so%3Add&nso_open=1`,
         templateIds: ['webItem', 'ugcItem', 'newsItem', 'videoItem'],
@@ -62,9 +62,9 @@ const CATEGORY_CONFIG: Record<string, { url: (keyword: string) => string; templa
         url: (keyword) => `https://m.search.naver.com/search.naver?ssc=tab.m_video.all&where=m_video&sm=mtb_jum&query=${encodeURIComponent(keyword)}&nso=so%3Add`,
         templateIds: ['videoItem'],
     },
-};
+} satisfies Record<string, { url: (keyword: string) => string; templateIds: string[] }>;
 
-const CATEGORY_NAMES: Record<string, string> = {
+const CATEGORY_NAMES = {
     all: '통합검색',
     blog: '블로그',
     cafe: '카페',
@@ -90,12 +90,12 @@ async function handler(ctx) {
     };
 }
 
-function extractItems(response: string, templateId: string) {
+function extractItems(response: string, templateId: string): DataItem[] {
     const segments = response.split(`"templateId":"${templateId}"`);
     return segments
         .slice(0, -1)
         .map((segment) => (templateId === 'videoItem' ? extractVideoItem(segment) : extractGenericItem(segment, templateId)))
-        .filter(Boolean) as DataItem[];
+        .filter((item) => item !== null);
 }
 
 function extractVideoItem(segment: string) {
@@ -170,11 +170,7 @@ function extractGenericItem(segment: string, templateId: string) {
         bodyText = cleanText(bodyMatch[1]);
     }
 
-    if (!title || !link) {
-        return null;
-    }
-
-    if (['더보기', '관련도순', '최신순'].includes(title)) {
+    if (!title || !link || ['더보기', '관련도순', '최신순'].includes(title)) {
         return null;
     }
 
@@ -213,10 +209,9 @@ function extractCafeItems(html: string) {
             const titleEl = $el.find('.title_link');
             const title = titleEl.text().trim();
             const link = titleEl.attr('href') || '';
-            const author = $el.find('.name').first().text().trim();
-            const timeText = $el.find('.sub').first().text().trim();
-            const descEl = $el.find('.dsc_link');
-            const description = descEl.length ? descEl.text().trim() : '';
+            const author = $el.find('.name').text().trim();
+            const timeText = $el.find('.sub').text().trim();
+            const description = $el.find('.dsc_link').text().trim();
 
             if (!title || !link) {
                 return null;
@@ -252,11 +247,7 @@ function parseKoreanRelativeTime(timeText: string): Date | undefined {
     }
 
     const match = timeText.match(/(\d+)\s*(시간|[분일주]) 전|(\d+)분 이내|(\d+)시간 이내|방금/);
-    if (!match) {
-        return;
-    }
-
-    if (match[0] === '방금') {
+    if (!match || match[0] === '방금') {
         return;
     }
 

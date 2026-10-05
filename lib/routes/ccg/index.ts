@@ -3,16 +3,22 @@ import { load } from 'cheerio';
 import type { Element } from 'domhandler';
 import type { Context } from 'hono';
 
+import InvalidParameterError from '@/errors/types/invalid-parameter';
 import type { Data, DataItem, Language, Route } from '@/types';
 import { ViewType } from '@/types';
 import cache from '@/utils/cache';
 import ofetch from '@/utils/ofetch';
 import { parseDate } from '@/utils/parse-date';
+import { isValidHost } from '@/utils/valid-host';
 
 import { renderDescription } from './templates/description';
 
 export const handler = async (ctx: Context): Promise<Data> => {
     const { category = 'news' } = ctx.req.param();
+    if (!isValidHost(category)) {
+        throw new InvalidParameterError('Invalid category');
+    }
+
     const limit = Number(ctx.req.query('limit') ?? '7');
 
     const baseUrl = 'http://www.ccg.org.cn';
@@ -20,7 +26,7 @@ export const handler = async (ctx: Context): Promise<Data> => {
 
     const response = await ofetch(targetUrl);
     const $: CheerioAPI = load(response);
-    const language = $('html').attr('lang') ?? 'zh';
+    const language = ($('html').attr('lang') ?? 'zh') as Language;
 
     let items: DataItem[] = $('ul.huodong-list li')
         .slice(0, limit)
@@ -57,7 +63,7 @@ export const handler = async (ctx: Context): Promise<Data> => {
                 image,
                 banner: image,
                 updated: upDatedStr ? parseDate(upDatedStr, 'YYYY年M月D日') : undefined,
-                language: language as Language,
+                language,
             };
 
             return processedItem;
@@ -94,7 +100,7 @@ export const handler = async (ctx: Context): Promise<Data> => {
                         text: description,
                     },
                     updated: upDatedStr ? parseDate(upDatedStr, 'YYYY年M月D日') : item.updated,
-                    language: language as Language,
+                    language,
                 };
 
                 return {
@@ -114,7 +120,7 @@ export const handler = async (ctx: Context): Promise<Data> => {
         allowEmpty: true,
         image: new URL('wp-content/themes/ccg/imgs/nav-logo.png', baseUrl).href,
         author,
-        language: language as Language,
+        language,
         id: targetUrl,
     };
 };

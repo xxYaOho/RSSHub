@@ -14,11 +14,11 @@ export const handler = async (ctx: Context): Promise<Data> => {
     const limit = Number(ctx.req.query('limit') ?? '17');
 
     const baseUrl = 'https://www.samrdprc.org.cn';
-    const targetUrl: string = new URL(id.endsWith('/') ? id : `${id}/`, baseUrl).href;
+    const targetUrl = `${baseUrl}/${id.endsWith('/') ? id : `${id}/`}`;
 
     const response = await ofetch(targetUrl);
     const $: CheerioAPI = load(response);
-    const language = $('html').attr('lang') ?? 'zh';
+    const language = ($('html').attr('lang') ?? 'zh') as Language;
 
     let items: DataItem[] = $('div.boxl_ul ul li')
         .slice(0, limit)
@@ -37,7 +37,7 @@ export const handler = async (ctx: Context): Promise<Data> => {
                 pubDate: pubDateStr ? parseDate(pubDateStr) : undefined,
                 link: linkUrl ? new URL(linkUrl, targetUrl).href : undefined,
                 updated: upDatedStr ? parseDate(upDatedStr) : undefined,
-                language: language as Language,
+                language,
             };
 
             return processedItem;
@@ -69,7 +69,7 @@ export const handler = async (ctx: Context): Promise<Data> => {
                         text: description,
                     },
                     updated: upDatedStr ? parseDate(upDatedStr) : item.updated,
-                    language: language as Language,
+                    language,
                 };
 
                 return {
@@ -88,7 +88,7 @@ export const handler = async (ctx: Context): Promise<Data> => {
         allowEmpty: true,
         image: new URL('images/logo_DPRC.png', baseUrl).href,
         author: $('meta[name="keyword"]').attr('content')?.split(/,/, 1)[0],
-        language: language as Language,
+        language,
         id: $('meta[property="og:url"]').attr('content'),
     };
 };

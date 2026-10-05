@@ -1,5 +1,4 @@
 import { load } from 'cheerio';
-import { Agent } from 'undici';
 
 import { config } from '@/config';
 import type { DataItem } from '@/types';
@@ -9,15 +8,13 @@ import { parseDate } from '@/utils/parse-date';
 
 export const BASE_URL = new URL('https://openai.com');
 
-// OpenAI article pages return Cloudflare 403 challenges when Undici negotiates HTTP/2.
-const articleDispatcher = new Agent({ allowH2: false });
-
 /** Fetch the details of an article. */
 export const fetchArticleDetails = async (url: string) => {
     // Ensure trailing slash to avoid 301 redirect
     const normalizedUrl = url.endsWith('/') ? url : `${url}/`;
     const html = await ofetch(normalizedUrl, {
-        dispatcher: articleDispatcher,
+        // OpenAI article pages return Cloudflare 403 challenges when Undici negotiates HTTP/2.
+        allowH2: false,
         responseType: 'text',
     });
     const $ = load(html);
@@ -69,7 +66,7 @@ export const fetchArticles = async (limit: number, category?: string): Promise<D
         items.slice(0, limit).map<Promise<DataItem>>((element) => {
             const id = $(element).find('guid').text();
 
-            return cache.tryGet(`openai:news:${id}`, async () => {
+            return cache.tryGet(`openai:news:${id}`, async (): Promise<DataItem> => {
                 const title = $(element).find('title').text();
                 const pubDate = parseDate($(element).find('pubDate').text());
                 const link = $(element).find('link').text();
@@ -84,8 +81,8 @@ export const fetchArticles = async (limit: number, category?: string): Promise<D
                     description: content,
                     category: categories,
                     author,
-                } as DataItem;
-            }) as Promise<DataItem>;
+                };
+            });
         })
     );
 };

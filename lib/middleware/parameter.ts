@@ -1,17 +1,17 @@
 import type { CheerioAPI } from 'cheerio';
 import { load } from 'cheerio';
 import type { Element } from 'domhandler';
-import * as entities from 'entities';
+import { decodeHTMLStrict } from 'entities';
 import type { MiddlewareHandler } from 'hono';
 import { convert } from 'html-to-text';
 import markdownit from 'markdown-it';
 import { RE2JS } from 're2js';
 import sanitizeHtml from 'sanitize-html';
-import { simplecc } from 'simplecc-wasm';
 
 import { config } from '@/config';
 import type { Data, DataItem } from '@/types';
 import cache from '@/utils/cache';
+import { isWorker } from '@/utils/is-worker';
 import { cancelUnload, scheduleUnload, warmupModel } from '@/utils/lmstudio';
 import logger from '@/utils/logger';
 import ofetch from '@/utils/ofetch';
@@ -106,10 +106,10 @@ const resolveLang = (raw: unknown, fallback?: { code: string; lang: string }): {
     return fallback;
 };
 
-const getAuthorString = (item) => {
+const getAuthorString = (item: DataItem) => {
     let author = '';
     if (item.author) {
-        author = typeof item.author === 'string' ? item.author : item.author.map((i) => i.name).join(' ');
+        author = Array.isArray(item.author) ? item.author.map((i) => i.name).join(' ') : item.author;
     }
     return author;
 };
@@ -117,7 +117,7 @@ const getAuthorString = (item) => {
 const middleware: MiddlewareHandler = async (ctx, next) => {
     await next();
 
-    const data = ctx.get('data') as Data;
+    const data: Data = ctx.get('data');
     if (data) {
         if ((!data.item || data.item.length === 0) && !data.allowEmpty) {
             throw new Error('this route is empty, please check the original site or <a href="https://github.com/DIYgod/RSSHub/issues/new/choose">create an issue</a>');
@@ -127,8 +127,10 @@ const middleware: MiddlewareHandler = async (ctx, next) => {
         data.item ||= [];
 
         // decode HTML entities
-        data.title &&= entities.decodeXML(data.title + '');
-        data.description &&= entities.decodeXML(data.description + '');
+        // oxlint-disable-next-line @typescript-eslint/no-unnecessary-type-conversion -- routes may return non-string values at runtime
+        data.title &&= decodeHTMLStrict(data.title + '');
+        // oxlint-disable-next-line @typescript-eslint/no-unnecessary-type-conversion -- routes may return non-string values at runtime
+        data.description &&= decodeHTMLStrict(data.description + '');
 
         // sort items
         if (ctx.req.query('sorted') !== 'false') {
@@ -136,7 +138,8 @@ const middleware: MiddlewareHandler = async (ctx, next) => {
         }
 
         const handleItem = (item: DataItem) => {
-            item.title &&= entities.decodeXML(item.title + '');
+            // oxlint-disable-next-line @typescript-eslint/no-unnecessary-type-conversion -- routes may return non-string values at runtime
+            item.title &&= decodeHTMLStrict(item.title + '');
             item.description ||= item.content?.html;
 
             // handle pubDate
@@ -224,7 +227,7 @@ const middleware: MiddlewareHandler = async (ctx, next) => {
             if (item.category) {
                 // convert single string to array, and filter only string type category
                 Array.isArray(item.category) || (item.category = [item.category]);
-                item.category = item.category.filter((e) => typeof e === 'string');
+                item.category = item.category.filter((e: unknown): e is string => typeof e === 'string');
             }
             return item;
         };
@@ -253,7 +256,7 @@ const middleware: MiddlewareHandler = async (ctx, next) => {
                 const title = item.title || '';
                 const description = item.description || title;
                 const author = getAuthorString(item);
-                const category = (item.category as string[] | undefined) || [];
+                const category = Array.isArray(item.category) ? item.category : [];
                 const isFilter =
                     regex instanceof RE2JS
                         ? regex.matcher(title).find() || regex.matcher(description).find() || regex.matcher(author).find() || category.some((c) => regex.matcher(c).find())
@@ -269,20 +272,20 @@ const middleware: MiddlewareHandler = async (ctx, next) => {
                 const title = item.title || '';
                 const description = item.description || title;
                 const author = getAuthorString(item);
-                const category = (item.category as string[] | undefined) || [];
+                const category = Array.isArray(item.category) ? item.category : [];
                 let isFilter = true;
 
                 if (ctx.req.query('filter_title')) {
                     const titleRegex = makeRegex(ctx.req.query('filter_title')!);
-                    isFilter = titleRegex instanceof RE2JS ? titleRegex.matcher(title).find() : !!titleRegex.test(title);
+                    isFilter = titleRegex instanceof RE2JS ? titleRegex.matcher(title).find() : titleRegex.test(title);
                 }
                 if (ctx.req.query('filter_description')) {
                     const descriptionRegex = makeRegex(ctx.req.query('filter_description')!);
-                    isFilter &&= descriptionRegex instanceof RE2JS ? descriptionRegex.matcher(description).find() : !!descriptionRegex.test(description);
+                    isFilter &&= descriptionRegex instanceof RE2JS ? descriptionRegex.matcher(description).find() : descriptionRegex.test(description);
                 }
                 if (ctx.req.query('filter_author')) {
                     const authorRegex = makeRegex(ctx.req.query('filter_author')!);
-                    isFilter &&= authorRegex instanceof RE2JS ? authorRegex.matcher(author).find() : !!authorRegex.test(author);
+                    isFilter &&= authorRegex instanceof RE2JS ? authorRegex.matcher(author).find() : authorRegex.test(author);
                 }
                 if (ctx.req.query('filter_category')) {
                     const categoryRegex = makeRegex(ctx.req.query('filter_category')!);
@@ -298,7 +301,7 @@ const middleware: MiddlewareHandler = async (ctx, next) => {
                 const title = item.title;
                 const description = item.description || title;
                 const author = getAuthorString(item);
-                const category = (item.category as string[] | undefined) || [];
+                const category = Array.isArray(item.category) ? item.category : [];
                 let isFilter = true;
 
                 if (ctx.req.query('filterout') || ctx.req.query('filterout_title')) {
@@ -374,7 +377,7 @@ const middleware: MiddlewareHandler = async (ctx, next) => {
                 });
 
                 item.author = author || parsed_result?.author;
-                item.description = parsed_result && parsed_result.content.length > 40 ? entities.decodeXML(parsed_result.content) : description;
+                item.description = parsed_result && parsed_result.content.length > 40 ? decodeHTMLStrict(parsed_result.content) : description;
             });
             await Promise.all(tasks);
         }
@@ -758,7 +761,8 @@ const middleware: MiddlewareHandler = async (ctx, next) => {
         }
 
         // opencc
-        if (ctx.req.query('opencc')) {
+        if (!isWorker && ctx.req.query('opencc')) {
+            const { simplecc } = await import('simplecc-wasm');
             for (const item of data.item) {
                 item.title = simplecc(item.title ?? item.link, ctx.req.query('opencc')!);
                 item.description = simplecc(item.description ?? item.title ?? item.link, ctx.req.query('opencc')!);

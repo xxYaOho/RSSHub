@@ -16,11 +16,11 @@ export const handler = async (ctx: Context): Promise<Data> => {
     const limit = Number(ctx.req.query('limit') ?? '10');
 
     const baseUrl = 'https://www.producereport.com';
-    const targetUrl: string = new URL(category, baseUrl).href;
+    const targetUrl = `${baseUrl}/${category}`;
 
     const response = await ofetch(targetUrl);
     const $: CheerioAPI = load(response);
-    const language = $('html').attr('lang') ?? 'en';
+    const language = ($('html').attr('lang') ?? 'en') as Language;
 
     let items: DataItem[] = $('table.views-table tbody tr')
         .slice(0, limit)
@@ -63,7 +63,7 @@ export const handler = async (ctx: Context): Promise<Data> => {
                 image,
                 banner: image,
                 updated: upDatedStr ? parseDate(upDatedStr) : undefined,
-                language: language as Language,
+                language,
             };
 
             return processedItem;
@@ -99,10 +99,11 @@ export const handler = async (ctx: Context): Promise<Data> => {
                 const authorEls: Element[] = $$('div.pane-node-author a.username').toArray();
                 const authors: DataItem['author'] = authorEls.map((authorEl) => {
                     const $$authorEl: Cheerio<Element> = $$(authorEl);
+                    const authorHref: string | undefined = $$authorEl.attr('href');
 
                     return {
                         name: $$authorEl.text(),
-                        url: $$authorEl.attr('href') ? new URL($$authorEl.attr('href') as string, baseUrl).href : undefined,
+                        url: authorHref ? new URL(authorHref, baseUrl).href : undefined,
                         avatar: undefined,
                     };
                 });
@@ -121,7 +122,7 @@ export const handler = async (ctx: Context): Promise<Data> => {
                     image,
                     banner: image,
                     updated: upDatedStr ? parseDate(upDatedStr) : item.updated,
-                    language: language as Language,
+                    language,
                 };
 
                 return {
@@ -140,7 +141,7 @@ export const handler = async (ctx: Context): Promise<Data> => {
         allowEmpty: true,
         image: $('meta[property="og:image"]').attr('content'),
         author: $('meta[property="og:site_name"]').attr('content'),
-        language: language as Language,
+        language,
         id: $('meta[property="og:url"]').attr('content'),
     };
 };

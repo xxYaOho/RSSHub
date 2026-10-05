@@ -1,7 +1,7 @@
 import { load } from 'cheerio';
 import type { Context } from 'hono';
 
-import type { Data, DataItem, Route } from '@/types';
+import type { Data, DataItem, Language, Route } from '@/types';
 import { ViewType } from '@/types';
 import cache from '@/utils/cache';
 import logger from '@/utils/logger';
@@ -27,13 +27,13 @@ export const handler = async (ctx: Context): Promise<Data> => {
 
     const html = await page.evaluate(() => document.documentElement.getHTML());
     const $ = load(html);
-    const language = $('html').attr('lang') ?? 'en';
+    const language = ($('html').attr('lang') ?? 'en') as Language;
 
     const seenLinks = new Set<string>();
 
     const items = $('a[href^="./changelog/"]')
         .toArray()
-        .map((elem) => {
+        .map((elem): DataItem | null => {
             const $link = $(elem);
             const href = $link.attr('href');
 
@@ -87,7 +87,7 @@ export const handler = async (ctx: Context): Promise<Data> => {
                 pubDate,
                 guid: `perplexity-changelog-${fullLink}`,
                 id: `perplexity-changelog-${fullLink}`,
-            } as DataItem;
+            };
         })
         .filter((item): item is DataItem => item !== null);
 
@@ -140,7 +140,7 @@ export const handler = async (ctx: Context): Promise<Data> => {
         item: resultItems,
         allowEmpty: true,
         image: $('meta[property="og:image"]').attr('content'),
-        language: language as 'en',
+        language,
     };
 };
 

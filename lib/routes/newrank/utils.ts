@@ -1,7 +1,7 @@
 import { config } from '@/config';
 import cache from '@/utils/cache';
-import got from '@/utils/got';
 import md5 from '@/utils/md5';
+import ofetch from '@/utils/ofetch';
 
 const newrank_cookie_token = 'newrank_cookie_token';
 const query_count = 'newrank_cookie_count';
@@ -9,7 +9,6 @@ const max_query_count = 30;
 
 const random_nonce = (count) => {
     const arr = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'a', 'b', 'c', 'd', 'e', 'f'];
-    const shuffled = [...arr];
     let i = arr.length,
         temp,
         index,
@@ -17,7 +16,7 @@ const random_nonce = (count) => {
     const min = i - count;
     while (i-- > min) {
         index = Math.floor((i + 1) * Math.random());
-        temp = shuffled[index];
+        temp = arr[index];
         str += temp;
     }
     return str;
@@ -57,18 +56,18 @@ const flatten = (arr) => {
 
 function shouldUpdateCookie(forcedUpdate = false) {
     if (forcedUpdate) {
-        cache.set(query_count, 0 as unknown as string);
+        cache.set(query_count, '');
     } else {
-        const count = cache.get(query_count) as unknown as number | null;
+        const count = cache.get(query_count);
         if (count) {
-            if (count > max_query_count) {
-                cache.set(query_count, 0 as unknown as string);
+            if (Number(count) > max_query_count) {
+                cache.set(query_count, '');
                 clearCookie();
             } else {
-                cache.set(query_count, (count + 1) as unknown as string);
+                cache.set(query_count, `${count}1`);
             }
         } else {
-            cache.set(query_count, 1 as unknown as string);
+            cache.set(query_count, '1');
         }
     }
 }
@@ -82,29 +81,25 @@ async function getCookie() {
     // Check if this key should be replace? every 30 times should be fine.
     shouldUpdateCookie();
     let token = await cache.get(newrank_cookie_token);
-    const newrankConfig = config.newrank as any;
+    const newrankConfig = config.newrank as { username?: string; password?: string };
     const username = String(newrankConfig.username);
     const password = md5(md5(String(newrankConfig.password)) + 'daddy');
     const nonce = random_nonce(9);
     const xyz = decrypt_login_xyz(username, password, nonce);
     if (!token) {
-        const indexResponse = await got({
-            method: 'post',
-            url: 'https://www.newrank.cn/nr/user/login/loginByAccount',
-            form: {
+        const indexResponse = await ofetch.raw('https://www.newrank.cn/nr/user/login/loginByAccount', {
+            method: 'POST',
+            body: new URLSearchParams({
                 account: username,
                 password,
-                state: 1,
+                state: '1',
                 nonce,
                 xyz,
-            },
+            }),
         });
-        const set_cookie = indexResponse.headers['set-cookie'];
-        if (set_cookie) {
-            for (const e of set_cookie) {
-                if (e.indexOf('token') === 0) {
-                    token = e.split(';', 1)[0];
-                }
+        for (const e of indexResponse.headers.getSetCookie()) {
+            if (e.startsWith('token')) {
+                token = e.split(';', 1)[0];
             }
         }
         cache.set(newrank_cookie_token, token ?? '', 600);

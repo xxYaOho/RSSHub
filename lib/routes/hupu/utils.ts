@@ -13,7 +13,7 @@ export function extractNextData<T = unknown>(html: string, url?: string): T {
     }
 
     try {
-        return JSON.parse(scriptMatch[1]) as T;
+        return JSON.parse(scriptMatch[1]);
     } catch (error) {
         throw new Error(`Failed to parse __NEXT_DATA__ JSON: ${error instanceof Error ? error.message : String(error)}`, { cause: error });
     }
@@ -198,9 +198,9 @@ export async function getGameStatus(matchID: string): Promise<string | null> {
             matchId: matchID,
         },
     });
-    const data = res.data;
+    const data: { result?: GameStatusResult } | null = res.data;
     if (data?.result && data.result.playerStats && data.result.matchStats && data.result.teamStats) {
-        const html = generateGameStatusHtml(data.result as GameStatusResult);
+        const html = generateGameStatusHtml(data.result);
         return html;
     }
     return null;

@@ -1,5 +1,5 @@
-import { ImapFlow, type MailboxObject } from 'imapflow';
-import { simpleParser } from 'mailparser';
+import { ImapFlow } from 'imapflow';
+import PostalMime from 'postal-mime';
 
 import { config } from '@/config';
 import ConfigNotFoundError from '@/errors/types/config-not-found';
@@ -7,6 +7,13 @@ import type { Route } from '@/types';
 import cache from '@/utils/cache';
 import logger from '@/utils/logger';
 import { parseDate } from '@/utils/parse-date';
+
+interface MailConfig {
+    username: string;
+    port: number | string;
+    password?: string;
+    host?: string;
+}
 
 export const route: Route = {
     path: '/imap/:email/:folder{.+}?',
@@ -25,7 +32,7 @@ export const route: Route = {
 async function handler(ctx) {
     const { email, folder = 'INBOX' } = ctx.req.param();
     const { limit = 10 } = ctx.req.query();
-    const mailConfig: { username: string; port: number | string; password?: string; host?: string } = {
+    const mailConfig: MailConfig = {
         username: email,
         port: 993,
         ...Object.fromEntries(new URLSearchParams(config.email.config[email.replaceAll(/[.@]/g, '_')])),
@@ -75,7 +82,11 @@ async function handler(ctx) {
     const mails: any[] = [];
     const lock = await client.getMailboxLock(folder);
     try {
-        const messages = client.fetch(`${Math.max((client.mailbox as MailboxObject).exists - limit + 1, 1)}:*`, { envelope: true, source: true, uid: true });
+        const mailbox = client.mailbox;
+        if (!mailbox) {
+            throw new Error(`Failed to open mailbox ${folder}`);
+        }
+        const messages = client.fetch(`${Math.max(mailbox.exists - limit + 1, 1)}:*`, { envelope: true, source: true, uid: true });
         for await (const message of messages) {
             mails.push(message);
         }
@@ -86,9 +97,9 @@ async function handler(ctx) {
     const items = await Promise.all(
         mails.map((item) =>
             cache.tryGet(`mail:${email}:${item.envelope.messageId}`, async () => {
-                const parsed = await simpleParser(item.source);
+                const parsed = await PostalMime.parse(item.source);
 
-                let description = parsed.html || parsed.textAsHtml;
+                let description = parsed.html || parsed.text?.replaceAll('\n', '<br>');
                 if (parsed.attachments.length) {
                     description += `<h3>Attachments (${parsed.attachments.length})</h3>`;
                     for (const attachment of parsed.attachments) {
@@ -100,7 +111,7 @@ async function handler(ctx) {
                     title: item.envelope.subject,
                     description,
                     pubDate: parseDate(item.envelope.date),
-                    author: parsed.from!.text,
+                    author: parsed.from!.name || parsed.from!.address,
                     guid: `mail:${email}:${item.envelope.messageId}`,
                 };
             })

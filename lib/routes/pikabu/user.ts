@@ -1,8 +1,8 @@
 import { load } from 'cheerio';
 import iconv from 'iconv-lite';
 
-import type { Language, Route } from '@/types';
-import got from '@/utils/got';
+import type { Route } from '@/types';
+import ofetch from '@/utils/ofetch';
 import { parseDate } from '@/utils/parse-date';
 
 import { baseUrl, fixImage, fixVideo } from './utils';
@@ -33,12 +33,12 @@ export const route: Route = {
 async function handler(ctx) {
     const name = ctx.req.param('name');
     const link = `${baseUrl}/${name}`;
-    const response = await got(link, {
-        responseType: 'buffer',
+    const response = await ofetch.raw(link, {
+        responseType: 'arrayBuffer',
     });
 
-    const charset = response.headers['content-type'].match(/charset=([\w-]+)/)[1]; // windows-1251
-    const $ = load(iconv.decode(response.data, charset));
+    const charset = response.headers.get('content-type')!.match(/charset=([\w-]+)/)![1]; // windows-1251
+    const $ = load(iconv.decode(Buffer.from(response._data!), charset));
 
     const items = $('.story__main')
         .not('.story__placeholder')
@@ -65,7 +65,7 @@ async function handler(ctx) {
         title: $('meta[property="og:title"]').attr('content')!,
         description: $('.profile__user-about-content').text(),
         image: $('meta[property="og:image"]').attr('content'),
-        language: 'ru-ru' as Language,
+        language: 'ru-ru' as const,
         link,
         item: items,
     };

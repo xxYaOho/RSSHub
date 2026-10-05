@@ -1,14 +1,20 @@
 import { load } from 'cheerio';
 
+import InvalidParameterError from '@/errors/types/invalid-parameter';
 import type { Language, Route } from '@/types';
 import cache from '@/utils/cache';
 import got from '@/utils/got';
 import { parseDate } from '@/utils/parse-date';
+import { isValidHost } from '@/utils/valid-host';
 
 import { renderDescription } from './templates/description';
 
 export const handler = async (ctx) => {
     const { conference } = ctx.req.param();
+    if (conference && !isValidHost(conference)) {
+        throw new InvalidParameterError('Invalid conference');
+    }
+
     const limit = ctx.req.query('limit') ? Number(ctx.req.query('limit')) : 12;
 
     const rootUrl = 'https://www.infoq.com';
@@ -18,7 +24,7 @@ export const handler = async (ctx) => {
 
     const $ = load(response);
 
-    const language = $('html').prop('lang');
+    const language = $('html').prop('lang') as Language;
 
     let items = $('ul[data-tax="presentations"] li[data-path]')
         .slice(0, limit)
@@ -57,7 +63,7 @@ export const handler = async (ctx) => {
                 author: $item
                     .find('div.card__authors a')
                     .toArray()
-                    .map((a) => $(a).text().trim())
+                    .map((a) => $(a).text())
                     .join('/'),
                 guid,
                 id: guid,
@@ -67,7 +73,7 @@ export const handler = async (ctx) => {
                 },
                 image,
                 banner: image,
-                language: language as Language,
+                language,
                 enclosure_url: length ? link : undefined,
                 enclosure_type: length ? 'video/mp4' : undefined,
                 enclosure_title: title,
@@ -88,9 +94,9 @@ export const handler = async (ctx) => {
                 const length = $$('div.player__actions span').text() || undefined;
 
                 const script = $$('script[type="text/javascript"]').text();
-                const videoSrc = script.match(/P\.s\s=\s'(.*?)';/)?.[1] ?? undefined;
-                const poster = script.match(/P\.c\(.*?isWideScreen,\s'(.*?)',\s/)?.[1] ?? undefined;
-                const topicsStr = script.match(/var\stopicsInPage\s=\sJSON\.parse\('(.*?)'\);/)?.[1]?.replaceAll('\\', '') ?? undefined;
+                const videoSrc = script.match(/P\.s\s=\s'(.*?)';/)?.[1];
+                const poster = script.match(/P\.c\(.*?isWideScreen,\s'(.*?)',\s/)?.[1];
+                const topicsStr = script.match(/var\stopicsInPage\s=\sJSON\.parse\('(.*?)'\);/)?.[1]?.replaceAll('\\', '');
 
                 if (videoSrc) {
                     $$('div.player').replaceWith(
@@ -139,7 +145,7 @@ export const handler = async (ctx) => {
                 };
                 item.image = image;
                 item.banner = image;
-                item.language = language as Language;
+                item.language = language;
                 item.enclosure_url = videoSrc;
                 item.enclosure_type = item.enclosure_url ? 'video/mp4' : undefined;
                 item.enclosure_title = title;
@@ -161,7 +167,7 @@ export const handler = async (ctx) => {
         allowEmpty: true,
         image,
         author: title.split(/-/).pop(),
-        language: language as Language,
+        language,
     };
 };
 

@@ -8,13 +8,13 @@ export const handler = async (ctx) => {
     const limit = ctx.req.query('limit') ? Number(ctx.req.query('limit')) : 30;
 
     const rootUrl = 'https://www.mhlw.go.jp';
-    const currentUrl = new URL(category.endsWith('.html') ? category : `${category}.html`, rootUrl).href;
+    const currentUrl = `${rootUrl}/${category.endsWith('.html') ? category : `${category}.html`}`;
 
     const { data: response } = await got(currentUrl);
 
     const $ = load(response);
 
-    const language = $('html').prop('lang');
+    const language = $('html').prop('lang') as Language;
 
     const items = $('a[data-icon="pdf"]')
         .slice(0, limit)
@@ -28,14 +28,14 @@ export const handler = async (ctx) => {
             return {
                 title,
                 link,
-                language: language as Language,
+                language,
                 enclosure_url: link,
-                enclosure_type: link ? 'application/pdf' : undefined,
+                enclosure_type: 'application/pdf',
                 enclosure_title: title,
             };
         });
 
-    const image = new URL($('div.m-headerLogo img').first().prop('src')!, rootUrl).href;
+    const image = new URL($('div.m-headerLogo img').prop('src')!, rootUrl).href;
 
     return {
         title: $('title').text(),
@@ -45,7 +45,7 @@ export const handler = async (ctx) => {
         allowEmpty: true,
         image,
         author: $('meta[property="og:site_name"]').prop('content'),
-        language: language as Language,
+        language,
     };
 };
 

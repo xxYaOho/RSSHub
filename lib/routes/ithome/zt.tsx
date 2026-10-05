@@ -1,7 +1,7 @@
 import { load } from 'cheerio';
 import { renderToString } from 'hono/jsx/dom/server';
 
-import type { DataItem, Language, Route } from '@/types';
+import type { DataItem, Route } from '@/types';
 import cache from '@/utils/cache';
 import got from '@/utils/got';
 import { parseDate } from '@/utils/parse-date';
@@ -19,7 +19,7 @@ export const handler = async (ctx) => {
     const $ = load(response);
 
     const author = 'IT之家';
-    const language = 'zh';
+    const language = 'zh' as const;
 
     let items = $('div.newsbody')
         .slice(0, limit)
@@ -41,11 +41,11 @@ export const handler = async (ctx) => {
                     ),
                     8
                 ),
-                link: $item.find('a').first().prop('href'),
+                link: $item.find('a').prop('href'),
                 author: $item.find('div.editor').contents().first().text(),
                 image,
                 banner: image,
-                language: language as Language,
+                language,
             };
         });
 
@@ -63,15 +63,17 @@ export const handler = async (ctx) => {
 
                     const src = $el.prop('data-original');
 
-                    if (src) {
-                        const alt = $el.prop('alt');
-                        $el.replaceWith(renderToString(<figure>{alt ? <img src={src} alt={alt} /> : <img src={src} />}</figure>));
+                    if (!src) {
+                        return;
                     }
+
+                    const alt = $el.prop('alt');
+                    $el.replaceWith(renderToString(<figure>{alt ? <img src={src} alt={alt} /> : <img src={src} />}</figure>));
                 });
 
                 const title = $$('h1').text();
                 const description = $$('div#paragraph').html();
-                const image = $$('div#paragraph img').first().prop('src');
+                const image = $$('div#paragraph img').prop('src');
 
                 item.title = title;
                 item.description = description;
@@ -104,7 +106,7 @@ export const handler = async (ctx) => {
         allowEmpty: true,
         image,
         author,
-        language: language as Language,
+        language,
     };
 };
 

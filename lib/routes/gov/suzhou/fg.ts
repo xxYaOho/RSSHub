@@ -30,7 +30,7 @@ async function handler(ctx) {
     const limit = ctx.req.query('limit') ? Number(ctx.req.query('limit')) : 30;
 
     const rootUrl = 'https://fg.suzhou.gov.cn';
-    const currentUrl = new URL(`${categoryPath}.shtml`, rootUrl).href;
+    const currentUrl = `${rootUrl}/${categoryPath}.shtml`;
 
     const { data: response } = await got(currentUrl);
 
@@ -71,12 +71,14 @@ async function handler(ctx) {
     const subtitle = $('meta[name="ColumnName"]').prop('content');
     const image = new URL($('div.logo img').prop('src')!, rootUrl).href;
 
+    const language = $('html').prop('lang') as Language;
+
     return {
         item: items,
         title: `${author} - ${subtitle}`,
         link: currentUrl,
         description: $('meta[name="ColumnDescription"]').prop('content'),
-        language: $('html').prop('lang') as Language,
+        language,
         image,
         subtitle,
         author,

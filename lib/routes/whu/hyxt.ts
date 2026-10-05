@@ -61,7 +61,7 @@ async function handler(ctx) {
     const limit = ctx.req.query('limit') ? Number(ctx.req.query('limit')) : 30;
 
     const rootUrl = `https://hyxt.${domain}`;
-    const currentUrl = new URL(`${category}.htm`, rootUrl).href;
+    const currentUrl = `${rootUrl}/${category}.htm`;
 
     const { data: response } = await got(currentUrl);
 
@@ -88,12 +88,14 @@ async function handler(ctx) {
     const siteName = getMeta(meta, 'SiteName');
     const columnName = getMeta(meta, 'ColumnName');
 
+    const language = $('html').prop('lang') as Language;
+
     return {
         item: items,
         title: `${siteName} - ${columnName}`,
         link: currentUrl,
         description: getMeta(meta, 'ColumnKeywords'),
-        language: $('html').prop('lang') as Language,
+        language,
         image: new URL($('div.top-logo img').prop('src')!, rootUrl).href,
         subtitle: columnName,
         author: siteName,

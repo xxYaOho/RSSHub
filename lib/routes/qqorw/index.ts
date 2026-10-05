@@ -1,10 +1,12 @@
 import { load } from 'cheerio';
 
-import type { DataItem, Language, Route } from '@/types';
+import InvalidParameterError from '@/errors/types/invalid-parameter';
+import type { DataItem, Route } from '@/types';
 import cache from '@/utils/cache';
 import got from '@/utils/got';
 import { parseDate } from '@/utils/parse-date';
 import timezone from '@/utils/timezone';
+import { isValidHost } from '@/utils/valid-host';
 
 export const route: Route = {
     path: '/:category?',
@@ -34,6 +36,10 @@ export const route: Route = {
 
 async function handler(ctx) {
     const { category = '' } = ctx.req.param();
+    if (category && !isValidHost(category)) {
+        throw new InvalidParameterError('Invalid category');
+    }
+
     const limit = ctx.req.query('limit') ? Number(ctx.req.query('limit')) : 10;
 
     const rootUrl = 'https://qqorw.cn';
@@ -74,7 +80,7 @@ async function handler(ctx) {
                 content('div.contenttxt').prev().nextAll().remove();
 
                 item.title = content('h1.article-title').text();
-                item.description = content('article.article-content').html() ?? '';
+                item.description = content('article.article-content').html();
                 item.author = content('i.fa-user').parent().text().trim();
                 item.category = content('#mute-category')
                     .toArray()
@@ -96,7 +102,7 @@ async function handler(ctx) {
         title: `${author}${title ? ` - ${title}` : ''}`,
         link: currentUrl,
         description: $('meta[name="description"]').prop('content'),
-        language: 'zh-CN' as Language,
+        language: 'zh-CN' as const,
         image: new URL($('h1.site-title a img').prop('src')!, rootUrl).href,
         icon,
         logo: icon,
