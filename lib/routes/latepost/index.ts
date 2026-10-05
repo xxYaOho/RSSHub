@@ -1,6 +1,6 @@
 import { load } from 'cheerio';
 
-import type { Language, Route } from '@/types';
+import type { Data, Route } from '@/types';
 import cache from '@/utils/cache';
 import got from '@/utils/got';
 import { parseDate, parseRelativeDate } from '@/utils/parse-date';
@@ -13,15 +13,7 @@ import timezone from '@/utils/timezone';
  * @param {Array} arr - The array to be converted.
  * @returns {Object} - The converted dictionary object.
  */
-const arrayToDictionary = (arr) =>
-    Object.fromEntries(
-        arr.map(({ id, ...rest }) => [
-            id,
-            {
-                ...rest,
-            },
-        ])
-    );
+const arrayToDictionary = (arr) => Object.fromEntries(arr.map(({ id, ...rest }) => [id, rest]));
 
 export const route: Route = {
     path: '/:proma?',
@@ -44,7 +36,7 @@ export const route: Route = {
 |          | 1        | 2        | 3          | 4      |`,
 };
 
-async function handler(ctx) {
+async function handler(ctx): Promise<Data> {
     const proma = ctx.req.param('proma');
     const limit = ctx.req.query('limit') ? Number(ctx.req.query('limit')) : 5;
 
@@ -94,7 +86,21 @@ async function handler(ctx) {
                 const content = load(detailResponse);
 
                 item.title ??= content('div.article-header-title').text();
-                item.description = content('#select-main').html()!.replaceAll('<p><br></p>', '');
+
+                // The cover image lives outside of the article body (#select-main), in either the
+                // `.abstract` block (exclusives / long reads) or `.interview-pic` (interviews).
+                // Fall back to the share image embedded in the page script, which covers both layouts.
+                let cover = content('#abstract_img').attr('src') || content('img.interview-pic').attr('src');
+                if (!cover) {
+                    cover = /var\s+imgUrl\s*=\s*'([^']+)'/.exec(detailResponse)?.[1];
+                }
+                // The site serves the cover over plain http, which readers may refuse to load.
+                const coverHtml = cover ? `<img src="${new URL(cover, rootUrl).href.replace(/^http:/, 'https:')}">` : '';
+
+                const abstract = content('div.abstract-pic-left').html();
+                const abstractHtml = abstract ? `<blockquote>${abstract}</blockquote>` : '';
+
+                item.description = coverHtml + abstractHtml + content('#select-main').html()!.replaceAll('<p><br></p>', '');
                 item.author = content('div.article-header-author div.author-link a.label').first().text();
                 item.category = item.category.filter(Boolean);
                 item.guid = `latepost-${item.guid}`;
@@ -124,7 +130,7 @@ async function handler(ctx) {
         title: `${title} - ${proma ? columns[proma].title : defaultTitle}`,
         link: currentUrl,
         description: $('div.logo-txt').first().text(),
-        language: 'zh-CN' as Language,
+        language: 'zh-CN',
         image: new URL($('div.logo-txt img').prop('src')!, rootUrl).href,
         icon,
         logo: icon,

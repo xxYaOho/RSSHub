@@ -1,11 +1,13 @@
 import { load } from 'cheerio';
 
-import type { Language, Route } from '@/types';
+import InvalidParameterError from '@/errors/types/invalid-parameter';
+import type { Route } from '@/types';
 import cache from '@/utils/cache';
 import { getSubPath } from '@/utils/common-utils';
 import got from '@/utils/got';
 import { parseDate } from '@/utils/parse-date';
 import timezone from '@/utils/timezone';
+import { isValidHost } from '@/utils/valid-host';
 
 import { renderDescription } from './templates/description';
 
@@ -36,6 +38,10 @@ export const route: Route = {
 
 export async function handler(ctx) {
     const [id, category = 'china'] = getSubPath(ctx).split('/').filter(Boolean);
+    if (!isValidHost(category)) {
+        throw new InvalidParameterError('Invalid category');
+    }
+
     const limit = ctx.req.query('limit') ? Number(ctx.req.query('limit')) : 30;
 
     const rootUrl = `http://${id}.m4.cn`;
@@ -102,7 +108,7 @@ export async function handler(ctx) {
         title: $('title').text(),
         link: currentUrl,
         description: $('meta[name="description"]').prop('content'),
-        language: 'zh' as Language,
+        language: 'zh' as const,
         image,
         subtitle: $('meta[name="keywords"]').prop('content'),
         author: $('meta[name="author"]').prop('content'),

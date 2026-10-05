@@ -14,7 +14,7 @@ const categoryMap = {
 function extractSfrmUrl(url) {
     const urlObj = new URL(url);
     const sfrmValue = urlObj.searchParams.get('sfrm');
-    urlObj.search = new URLSearchParams({ sfrm: sfrmValue as string }).toString();
+    urlObj.search = new URLSearchParams({ sfrm: String(sfrmValue) }).toString();
     return urlObj.href;
 }
 export const route: Route = {
@@ -55,8 +55,13 @@ async function handler(ctx) {
     const list = $('.product')
         .toArray()
         .map((element) => {
+            const tealiumRaw = $(element).find('.product-tile').attr('data-tealium');
+            if (!tealiumRaw) {
+                return null;
+            }
+            const tealium: { product_name: string[] } = JSON.parse(tealiumRaw);
             const data = {
-                title: ($(element).find('.product-tile').data('tealium') as { product_name: string[] }).product_name[0],
+                title: tealium.product_name[0],
                 link: host + '/' + $(element).find('[itemprop="url"]').attr('href'),
                 description: '',
                 category: $(element).find('[itemprop="category"]').attr('content'),
@@ -73,7 +78,8 @@ async function handler(ctx) {
                     </div>
                 );
             return data;
-        });
+        })
+        .filter((item) => item !== null);
     return {
         title: `Patagonia - New Arrivals - ${category.toUpperCase()}`,
         link: `${host}/shop/${categoryMap[category][1]}`,

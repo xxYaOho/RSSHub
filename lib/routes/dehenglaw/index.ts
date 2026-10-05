@@ -1,14 +1,20 @@
 import { load } from 'cheerio';
 
+import InvalidParameterError from '@/errors/types/invalid-parameter';
 import type { DataItem, Route } from '@/types';
 import cache from '@/utils/cache';
 import got from '@/utils/got';
 import { parseDate } from '@/utils/parse-date';
+import { isValidHost } from '@/utils/valid-host';
 
 import { renderDescription } from './templates/description';
 
 export const handler = async (ctx) => {
     const { language = 'CN', category = 'paper' } = ctx.req.param();
+    if (!isValidHost(language)) {
+        throw new InvalidParameterError('Invalid language');
+    }
+
     const limit = ctx.req.query('limit') ? Number(ctx.req.query('limit')) : 6;
 
     const rootUrl = 'https://www.dehenglaw.com';
@@ -33,7 +39,7 @@ export const handler = async (ctx) => {
                 title,
                 description,
                 pubDate: parseDate($item.find('span').text(), 'YYYY/M/D'),
-                link: $item.find('a').first().prop('href'),
+                link: $item.find('a').prop('href'),
             };
         });
 
@@ -84,7 +90,7 @@ export const route: Route = {
     path: '/:language?/:category?',
     name: '德恒探索',
     url: 'dehenglaw.com',
-    maintainers: ['nczitzk'],
+    maintainers: ['snipersteve', 'nczitzk'],
     handler,
     example: '/dehenglaw/CN/paper',
     parameters: { language: '语言，默认为中文，即 CN，可在对应分类页 URL 中找到，可选 CN 和 EN', category: '分类，默认为专业文章，即 paper，可在对应分类页 URL 中找到' },

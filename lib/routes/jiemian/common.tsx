@@ -3,7 +3,7 @@ import { load } from 'cheerio';
 import { raw } from 'hono/html';
 import { renderToString } from 'hono/jsx/dom/server';
 
-import type { Data, DataItem } from '@/types';
+import type { Data, DataItem, Language } from '@/types';
 import cache from '@/utils/cache';
 import ofetch from '@/utils/ofetch';
 import { parseDate } from '@/utils/parse-date';
@@ -27,7 +27,7 @@ export const handler = async (ctx): Promise<Data> => {
     // Scope to #lists for newsflash-type pages, otherwise search the full page
     const container = $('#lists').length ? $('#lists') : $('body');
 
-    let items = {};
+    const items = new Map<string, DataItem>();
     const links = container.find('a').toArray();
     for (const el of links) {
         const item = $(el);
@@ -35,21 +35,23 @@ export const handler = async (ctx): Promise<Data> => {
         const link = href ? (href.startsWith('/') ? new URL(href, rootUrl).href : href) : undefined;
 
         if (link && /\/(?:article|video)\/\w+\.html/.test(link)) {
-            items[link] = {
+            items.set(link, {
                 title: item.text(),
                 link,
-            };
+            });
         }
     }
 
-    items = await Promise.all(
-        Object.values(items)
+    const articles = await Promise.all(
+        items
+            .values()
+            .toArray()
             .slice(0, limit)
             .map((item) => fetchArticle(item))
     );
 
     return {
-        item: items as DataItem[],
+        item: articles,
         ...feedMeta($, currentUrl),
     };
 };
@@ -123,7 +125,7 @@ export const feedMeta = ($: CheerioAPI, currentUrl: string) => {
         title,
         link: currentUrl,
         description: $('meta[name="description"]').prop('content'),
-        language: $('html').prop('lang') as Data['language'],
+        language: $('html').prop('lang') as Language,
         image,
         icon: image,
         logo: image,

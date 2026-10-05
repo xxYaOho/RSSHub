@@ -88,7 +88,7 @@ async function handler(ctx) {
         const items = feed.items.map((item) => {
             const guid = item.guid;
 
-            const $$ = load(item['content:encoded']);
+            const $$ = load(item['content:encoded'] ?? '');
 
             $$('img').each((_, el) => {
                 const $el = $$(el);
@@ -128,7 +128,7 @@ async function handler(ctx) {
             allowEmpty: true,
             image: feed.image?.url,
             language: feed.language,
-        } as Data;
+        } satisfies Data;
     }
 }
 

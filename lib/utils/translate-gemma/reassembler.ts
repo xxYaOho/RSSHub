@@ -11,7 +11,8 @@ function encodeAndRestore(translated: string, placeholders: Map<string, string>)
     let result = entities.encodeXML(translated);
     // 占位符 key (e.g. NO_TRANSLATE_0_) 全部为 ASCII，encodeXML 不会改变它们
     for (const [key, html] of placeholders) {
-        result = result.replaceAll(key, html);
+        // 用函数式替换，避免 html 里的 $ 序列被当成替换模式
+        result = result.replaceAll(key, () => html);
     }
     return result;
 }
@@ -35,10 +36,7 @@ function flushList(parts: string[], buffer: string[], listParent: ListParent | n
 }
 
 function listParentEqual(a?: ListParent, b?: ListParent): boolean {
-    if (!a || !b) {
-        return false;
-    }
-    if (a.tagName !== b.tagName) {
+    if (!a || !b || a.tagName !== b.tagName) {
         return false;
     }
     const aKeys = Object.keys(a.attrs);

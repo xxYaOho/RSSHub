@@ -10,33 +10,34 @@ import ofetch from '@/utils/ofetch';
 import { parseDate } from '@/utils/parse-date';
 
 export const handler = async (ctx: Context): Promise<Data> => {
-    const { category = 'jiaotongyaowen' } = ctx.req.param();
+    const { category = 'xinwen/jiaotongyaowen' } = ctx.req.param();
     const limit = Number(ctx.req.query('limit') ?? '30');
 
     const baseUrl = 'https://www.mot.gov.cn';
+    const image = `${baseUrl}/images/logo.png`;
     const targetUrl: string = new URL(category.endsWith('/') ? category : `${category}/`, baseUrl).href;
 
     const response = await ofetch(targetUrl);
     const $: CheerioAPI = load(response);
-    const language = $('html').attr('lang') ?? 'zh';
+    const language = ($('html').attr('lang') ?? 'zh') as Language;
 
-    let items: DataItem[] = $('div.tab-pane a')
+    let items: DataItem[] = $('li.news-item a.news-link')
         .slice(0, limit)
         .toArray()
         .map((el) => {
             const $el: Cheerio<Element> = $(el);
 
-            const title: string = $el.attr('title') ?? $el.find('span').first().text();
-            const pubDateStr: string | undefined = $el.find('span.badge').text();
+            const title: string = $el.find('.news-title').text().trim();
+            const pubDateStr: string | undefined = $el.find('.news-date').text();
             const linkUrl: string | undefined = $el.attr('href');
-            const upDatedStr: string | undefined = $el.find('.time').text() || pubDateStr;
+            const upDatedStr: string | undefined = pubDateStr;
 
             const processedItem: DataItem = {
                 title,
                 pubDate: pubDateStr ? parseDate(pubDateStr) : undefined,
-                link: linkUrl ? (linkUrl.startsWith('http') ? linkUrl : new URL(linkUrl as string, targetUrl).href) : undefined,
+                link: linkUrl ? (linkUrl.startsWith('http') ? linkUrl : new URL(linkUrl, targetUrl).href) : undefined,
                 updated: upDatedStr ? parseDate(upDatedStr) : undefined,
-                language: language as Language,
+                language,
             };
 
             return processedItem;
@@ -62,7 +63,7 @@ export const handler = async (ctx: Context): Promise<Data> => {
                             $$('meta[name="ColumnType"]').attr('content'),
                             $$('meta[name="ContentSource"]').attr('content'),
                             ...($$('meta[name="Keywords"]').attr('content')?.split(';') ?? []),
-                        ].filter(Boolean) as string[]
+                        ].filter((content): content is string => Boolean(content))
                     ),
                 ];
                 const authors: DataItem['author'] = [$$('meta[name="ColumnSource"]').attr('content'), $$('meta[name="Author"]').attr('content')].filter(Boolean).map((author) => ({
@@ -70,7 +71,6 @@ export const handler = async (ctx: Context): Promise<Data> => {
                     url: undefined,
                     avatar: undefined,
                 }));
-                const image: string | undefined = $$('a.navbar-brand img').attr('src') ? new URL($$('a.navbar-brand img').attr('src') as string, baseUrl).href : undefined;
                 const upDatedStr: string | undefined = pubDateStr;
 
                 const processedItem: DataItem = {
@@ -86,7 +86,7 @@ export const handler = async (ctx: Context): Promise<Data> => {
                     image,
                     banner: image,
                     updated: upDatedStr ? parseDate(upDatedStr) : item.updated,
-                    language: language as Language,
+                    language,
                 };
 
                 return {
@@ -103,9 +103,9 @@ export const handler = async (ctx: Context): Promise<Data> => {
         link: targetUrl,
         item: items,
         allowEmpty: true,
-        image: $('a.navbar-brand img').attr('src') ? new URL($('a.navbar-brand img').attr('src') as string, baseUrl).href : undefined,
+        image,
         author: $('meta[name="SiteName"]').attr('content'),
-        language: language as Language,
+        language,
         id: targetUrl,
     };
 };
@@ -116,28 +116,32 @@ export const route: Route = {
     url: 'www.mot.gov.cn',
     maintainers: ['ladeng07', 'nczitzk'],
     handler,
-    example: '/gov/mot/jiaotongyaowen',
+    example: '/gov/mot/xinwen/jiaotongyaowen',
     parameters: {
         category: {
-            description: '分类，默认为 `jiaotongyaowen`，即交通要闻，可在对应分类页 URL 中找到',
+            description: '分类，默认为 `xinwen/jiaotongyaowen`，即交通要闻，可在对应分类页 URL 中找到',
             options: [
                 {
                     label: '交通要闻',
-                    value: 'jiaotongyaowen',
+                    value: 'xinwen/jiaotongyaowen',
                 },
                 {
                     label: '时政要闻',
-                    value: 'shizhengyaowen',
+                    value: 'xinwen/shizhengyaowen',
                 },
                 {
-                    label: '重要会议',
-                    value: 'zhongyaohuiyi',
+                    label: '政策解读',
+                    value: 'gongkai/zcjd',
+                },
+                {
+                    label: '预警提示',
+                    value: 'fuwu/yujingtishi',
                 },
             ],
         },
     },
     description: `::: tip
-若订阅 [重要会议](https://www.mot.gov.cn/zhongyaohuiyi/)，网址为 \`https://www.mot.gov.cn/zhongyaohuiyi/\`，请截取 \`https://www.mot.gov.cn/\` 到末尾 \`/\` 的部分 \`zhongyaohuiyi\` 作为 \`category\` 参数填入，此时目标路由为 [\`/gov/mot/zhongyaohuiyi\`](https://rsshub.app/gov/mot/zhongyaohuiyi)。
+若订阅 [政策解读](https://www.mot.gov.cn/gongkai/zcjd/)，网址为 \`https://www.mot.gov.cn/gongkai/zcjd/\`，请截取 \`https://www.mot.gov.cn/\` 到末尾 \`/\` 的部分 \`gongkai/zcjd\` 作为 \`category\` 参数填入，此时目标路由为 [\`/gov/mot/gongkai/zcjd\`](https://rsshub.app/gov/mot/gongkai/zcjd)。
 :::`,
     categories: ['government'],
     features: {
@@ -151,27 +155,24 @@ export const route: Route = {
     },
     radar: [
         {
-            source: ['www.mot.gov.cn/:category'],
-            target: (params) => {
-                const category: string = params.category;
-
-                return `/mot${category ? `/${category}` : ''}`;
-            },
-        },
-        {
             title: '交通要闻',
-            source: ['www.mot.gov.cn/jiaotongyaowen/'],
-            target: '/jiaotongyaowen',
+            source: ['www.mot.gov.cn/xinwen/jiaotongyaowen/'],
+            target: '/xinwen/jiaotongyaowen',
         },
         {
             title: '时政要闻',
-            source: ['www.mot.gov.cn/shizhengyaowen/'],
-            target: '/shizhengyaowen',
+            source: ['www.mot.gov.cn/xinwen/shizhengyaowen/'],
+            target: '/xinwen/shizhengyaowen',
         },
         {
-            title: '重要会议',
-            source: ['www.mot.gov.cn/zhongyaohuiyi/'],
-            target: '/zhongyaohuiyi',
+            title: '政策解读',
+            source: ['www.mot.gov.cn/gongkai/zcjd/'],
+            target: '/gongkai/zcjd',
+        },
+        {
+            title: '预警提示',
+            source: ['www.mot.gov.cn/fuwu/yujingtishi/'],
+            target: '/fuwu/yujingtishi',
         },
     ],
     view: ViewType.Articles,

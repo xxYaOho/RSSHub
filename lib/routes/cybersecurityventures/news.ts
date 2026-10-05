@@ -9,14 +9,7 @@ import { parseDate } from '@/utils/parse-date';
 
 import type { RawRecord } from './types';
 
-const categories: Record<
-    string,
-    {
-        label: string;
-        scene: number;
-        view: number;
-    }
-> = {
+const categories = {
     today: {
         label: "Today's News",
         scene: 12,
@@ -54,6 +47,8 @@ const categories: Record<
     },
 };
 
+const isCategory = (key: string): key is keyof typeof categories => Object.hasOwn(categories, key);
+
 export const route: Route = {
     name: 'News',
     categories: ['programming'],
@@ -88,7 +83,7 @@ async function handler(ctx: Context): Promise<Data> {
     const category = ctx.req.param('category') ?? 'today';
     const limit = ctx.req.query('limit') ?? 20;
 
-    if (!Object.hasOwn(categories, category)) {
+    if (!isCategory(category)) {
         throw new InvalidParameterError('Invalid category');
     }
 
@@ -106,7 +101,7 @@ async function handler(ctx: Context): Promise<Data> {
     return {
         title: `${label} - Cybercrime Magazine`,
         link: `${rootUrl}/${category}`,
-        item: data.records.map((item) => {
+        item: data.records.map((item): DataItem => {
             const $ = load(item.field_3, null, false);
             const link = $('a').attr('href');
             const source = item.field_4;
@@ -118,7 +113,7 @@ async function handler(ctx: Context): Promise<Data> {
                 pubDate: parseDate(item.field_2.iso_timestamp),
                 link,
                 guid: `cybersecurityventures:${item.id}`,
-            } as DataItem;
+            };
         }),
     };
 }

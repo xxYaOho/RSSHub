@@ -1,7 +1,7 @@
 import { load } from 'cheerio';
 import iconv from 'iconv-lite';
 
-import type { Language, Route } from '@/types';
+import type { DataItem, Route } from '@/types';
 import { ViewType } from '@/types';
 import cache from '@/utils/cache';
 import got from '@/utils/got';
@@ -51,7 +51,7 @@ async function handler(ctx) {
 
     let items = $('tr[itemprop="chapter"]')
         .toArray()
-        .map((item) => {
+        .map((item): DataItem & { link: string; isVip?: boolean; isLock: boolean } => {
             const $item = $(item);
 
             const chapterId = $item.find('td').first().text().trim();
@@ -78,7 +78,7 @@ async function handler(ctx) {
                     chapterUpdatedTime,
                 }),
                 author,
-                category: [isVip ? 'VIP' : undefined, ...(category?.split(/\s/) ?? [])].filter(Boolean) as string[],
+                category: [isVip ? 'VIP' : '', ...(category?.split(/\s/) ?? [])].filter(Boolean),
                 guid: `jjwxc-${id}#${chapterId}`,
                 pubDate: timezone(parseDate(chapterUpdatedTime), 8),
                 isVip,
@@ -107,7 +107,7 @@ async function handler(ctx) {
                           });
                       }
 
-                      delete (item as { isVip?: unknown }).isVip;
+                      delete item.isVip;
 
                       return item;
                   })
@@ -123,7 +123,7 @@ async function handler(ctx) {
         title: `${logoEl.prop('alt').replace(/logo/, '')} | ${author}${keywords[0]}`,
         link: currentUrl,
         description: $('span[itemprop="description"]').text(),
-        language: 'zh' as Language,
+        language: 'zh' as const,
         image,
         icon,
         logo: icon,

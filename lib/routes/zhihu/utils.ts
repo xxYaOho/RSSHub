@@ -1,16 +1,16 @@
-import { Script } from 'node:vm';
-
 import { load } from 'cheerio';
 import { JSDOM, VirtualConsole } from 'jsdom';
+import { VM } from 'vm2';
 
 import { config } from '@/config';
 import cache from '@/utils/cache';
 import { generateHeaders } from '@/utils/header-generator';
+import { isWorker } from '@/utils/is-worker';
 import md5 from '@/utils/md5';
 import ofetch from '@/utils/ofetch';
-import wait from '@/utils/wait';
 
-import { encrypt as g_encrypt } from './execlib/x-zse-96-v3';
+import { createBrowserClient } from './browser';
+import { getSignedHeaders } from './sign';
 
 export const header = {
     'x-api-version': '3.0.91',
@@ -25,14 +25,16 @@ export const processImage = (content: string) => {
 
     $('a').each((_, elem) => {
         const href = $(elem).attr('href');
-        if (href?.startsWith('http://link.zhihu.com/?target=') || href?.startsWith('https://link.zhihu.com/?target=')) {
-            const url = new URL(href);
-            const target = url.searchParams.get('target') || '';
-            try {
-                $(elem).attr('href', decodeURIComponent(target));
-            } catch {
-                // sometimes the target is not a valid url
-            }
+        if (!href?.startsWith('http://link.zhihu.com/?target=') && !href?.startsWith('https://link.zhihu.com/?target=')) {
+            return;
+        }
+
+        const url = new URL(href);
+        const target = url.searchParams.get('target') || '';
+        try {
+            $(elem).attr('href', decodeURIComponent(target));
+        } catch {
+            // sometimes the target is not a valid url
         }
     });
 
@@ -70,10 +72,17 @@ const getCookieValueFrom = (cookieStr: string | undefined, key: string) =>
         .find((e) => e.startsWith(key + '='))
         ?.slice(key.length + 1) || '';
 
-export const getCookieValueByKey = (key: string) => getCookieValueFrom(config.zhihu.cookies as string | undefined, key);
+export const getCookieValueByKey = (key: string) => getCookieValueFrom(config.zhihu.cookies, key);
+
+export type ZhihuClient = {
+    get<T = any>(apiPath: string): Promise<T>;
+    getPage(): Promise<string>;
+};
 
 let isUnreachableRuntimeErrorGuarded = false;
 const pendingZseCredentials = new Map<string, Promise<{ dc0: string; zseCk: string; ua: string }>>();
+
+const hasNameAndMessage = (reason: unknown): reason is { name: unknown; message: unknown } => typeof reason === 'object' && reason !== null && 'name' in reason && 'message' in reason;
 
 const preventUnreachableRuntimeError = () => {
     if (isUnreachableRuntimeErrorGuarded) {
@@ -81,8 +90,7 @@ const preventUnreachableRuntimeError = () => {
     }
     isUnreachableRuntimeErrorGuarded = true;
     process.on('unhandledRejection', (reason) => {
-        const error = reason as { name?: string; message?: string } | undefined;
-        if (error?.name === 'RuntimeError' && error.message === 'unreachable') {
+        if (hasNameAndMessage(reason) && reason.name === 'RuntimeError' && reason.message === 'unreachable') {
             return;
         }
         throw reason;
@@ -107,13 +115,15 @@ const generateZseCk = async (url: string, apiPath: string, configuredDc0: string
             (seed.headers.getSetCookie?.() ?? [])
                 .find((line) => line.startsWith('d_c0='))
                 ?.split(';', 1)[0]
-                .slice('d_c0='.length) || '';
+                .slice('d_c0='.length)
+                .split('|', 1)[0]
+                .replace(/=+$/, '') || '';
     }
     if (!dc0) {
         throw new Error('zhihu: failed to obtain a guest d_c0 cookie');
     }
 
-    const challenge = await ofetch.raw(`https://www.zhihu.com${apiPath}`, {
+    const challenge = await ofetch.raw<string>(`https://www.zhihu.com${apiPath}`, {
         headers: {
             ...headers,
             cookie: `d_c0=${dc0}; __zse_ck=005_x-x`,
@@ -122,7 +132,7 @@ const generateZseCk = async (url: string, apiPath: string, configuredDc0: string
         },
         ignoreResponseError: true,
     });
-    const html = challenge._data as string;
+    const html = challenge._data ?? '';
     const meta = html.match(/id="zh-zse-ck"[^>]*content="([^"]*)"/)?.[1];
     const hash = html.match(/zse-ck\/v4\/([a-f0-9]+)\.js/)?.[1];
     if (!meta || !hash) {
@@ -146,13 +156,14 @@ const generateZseCk = async (url: string, apiPath: string, configuredDc0: string
         webdriver: { value: false, configurable: true },
     });
     window.TextEncoder = TextEncoder;
-    window.TextDecoder = TextDecoder as typeof window.TextDecoder;
+    window.TextDecoder = TextDecoder;
     window.atob = (value: string) => Buffer.from(value, 'base64').toString('binary');
     window.btoa = (value: string) => Buffer.from(value, 'binary').toString('base64');
     Object.assign(window, { __g: {} });
 
     const cookieDescriptor = Object.getOwnPropertyDescriptor(window.Document.prototype, 'cookie');
-    if (!cookieDescriptor?.get || !cookieDescriptor.set) {
+    const setCookie = cookieDescriptor?.set;
+    if (!cookieDescriptor?.get || !setCookie) {
         window.close();
         throw new Error('zhihu: JSDOM did not provide document.cookie accessors');
     }
@@ -161,7 +172,7 @@ const generateZseCk = async (url: string, apiPath: string, configuredDc0: string
             configurable: true,
             get: cookieDescriptor.get,
             set(value: string) {
-                Reflect.apply(cookieDescriptor.set!, window.document, [value]);
+                setCookie.call(window.document, value);
                 const token = value.match(/__zse_ck=([^;]+)/)?.[1];
                 if (token?.includes('-')) {
                     resolve(token);
@@ -171,11 +182,16 @@ const generateZseCk = async (url: string, apiPath: string, configuredDc0: string
     });
 
     let zseCk: string | undefined;
+    let timeoutId: ReturnType<typeof setTimeout> | number | undefined;
     try {
         // Zhihu's challenge is intentionally delivered as executable JavaScript.
-        new Script(vmScript).runInContext(dom.getInternalVMContext());
-        zseCk = (await Promise.race([tokenPromise, wait(3000)])) as string | undefined;
+        new VM({ timeout: 3000, sandbox: window }).run(vmScript);
+        const timeout = new Promise<undefined>((resolve) => {
+            timeoutId = setTimeout(resolve, 3000);
+        });
+        zseCk = await Promise.race([tokenPromise, timeout]);
     } finally {
+        clearTimeout(timeoutId);
         window.close();
     }
     if (!zseCk) {
@@ -213,39 +229,77 @@ const mergeGeneratedCookies = (configured: string, dc0: string, zseCk: string) =
     return [`__zse_ck=${zseCk}`, `d_c0=${dc0}`, ...remaining].join('; ');
 };
 
-export const getSignedHeader = async (url: string, apiPath: string) => {
-    const configured = (config?.zhihu?.cookies as string | undefined) || '';
-
-    const configuredDc0 = getCookieValueFrom(configured, 'd_c0');
-    const configuredZseCk = getCookieValueFrom(configured, '__zse_ck');
-
-    // A configured pair may have been generated with a different user-agent, so
-    // preserve the previous behavior and trust it as-is. Generated credentials
-    // always return their matching user-agent.
-    let cookieStr: string;
-    let ua: string | undefined;
-    if (configuredDc0 && configuredZseCk) {
-        cookieStr = configured;
-    } else {
-        const credentials = await getGeneratedZseCredentials(url, apiPath, configuredDc0);
-        // Login cookies only belong to the configured d_c0 session. Do not mix
-        // an isolated z_c0 with a newly-created guest session.
-        cookieStr = configuredDc0 ? mergeGeneratedCookies(configured, credentials.dc0, credentials.zseCk) : `__zse_ck=${credentials.zseCk}; d_c0=${credentials.dc0}`;
-        ua = credentials.ua;
-    }
-
-    // Sign with the same `d_c0` that is sent, otherwise the backend rejects the
-    // request. Refer to https://github.com/srx-2000/spider_collection/issues/18
-    const dc0 = getCookieValueFrom(cookieStr, 'd_c0');
-    const xzse93 = '101_3_3.0';
-    const f = `${xzse93}+${apiPath}+${dc0}`;
-    const xzse96 = '2.0_' + g_encrypt(md5(f));
+const createJSDOMClient = (pageUrl: string, configured: string, configuredDc0: string): ZhihuClient => {
+    let sessionPromise: Promise<{ dc0: string; headers: { cookie: string; 'user-agent': string } }> | undefined;
+    const startSession = async (apiPath: string) => {
+        try {
+            const { dc0, zseCk, ua } = await getGeneratedZseCredentials(pageUrl, apiPath, configuredDc0);
+            return {
+                dc0,
+                headers: {
+                    // An isolated login cookie must not be mixed with a new guest identity.
+                    cookie: configuredDc0 ? mergeGeneratedCookies(configured, dc0, zseCk) : `__zse_ck=${zseCk}; d_c0=${dc0}`,
+                    'user-agent': ua,
+                },
+            };
+        } catch (error) {
+            sessionPromise = undefined;
+            throw error;
+        }
+    };
+    const getSession = (apiPath = new URL(pageUrl).pathname + new URL(pageUrl).search) => (sessionPromise ??= startSession(apiPath));
 
     return {
-        cookie: cookieStr,
-        ...(ua && { 'user-agent': ua }),
-        'x-zse-96': xzse96,
-        'x-app-za': 'OS=Web',
-        'x-zse-93': xzse93,
+        get: async <Result = any>(apiPath: string): Promise<Result> => {
+            if (!apiPath.startsWith('/api/')) {
+                throw new Error('zhihu: expected an API path');
+            }
+            const { dc0, headers } = await getSession(apiPath);
+            return ofetch<Result>(`https://www.zhihu.com${apiPath}`, {
+                headers: { ...getSignedHeaders(apiPath, dc0), ...headers, Referer: pageUrl },
+            });
+        },
+        getPage: async () => {
+            const { headers } = await getSession();
+            return ofetch<string>(pageUrl, { headers: { ...headers, Referer: pageUrl }, parseResponse: (text) => text });
+        },
     };
+};
+
+export const withZhihuClient = async <T>(pageUrl: string, callback: (client: ZhihuClient) => Promise<T>): Promise<T> => {
+    const configured = config.zhihu.cookies || '';
+    const dc0 = getCookieValueFrom(configured, 'd_c0');
+    const hasConfiguredSession = !!dc0 && !!getCookieValueFrom(configured, '__zse_ck');
+    if (!isWorker && !hasConfiguredSession) {
+        return callback(createJSDOMClient(pageUrl, configured, dc0));
+    }
+
+    let browserPromise: ReturnType<typeof createBrowserClient> | undefined;
+    // Column APIs can initialize directly; other routes need their page session.
+    const getBrowser = (apiPath?: string) => (browserPromise ??= createBrowserClient(pageUrl, dc0 ? configured : '', apiPath?.startsWith('/api/v4/columns/') ? apiPath : undefined));
+
+    try {
+        return await callback({
+            get: async <Result = any>(apiPath: string): Promise<Result> => {
+                if (!apiPath.startsWith('/api/')) {
+                    throw new Error('zhihu: expected an API path');
+                }
+                if (hasConfiguredSession) {
+                    return ofetch<Result>(`https://www.zhihu.com${apiPath}`, {
+                        headers: { ...getSignedHeaders(apiPath, dc0), cookie: configured, Referer: pageUrl },
+                    });
+                }
+                return (await getBrowser(apiPath)).get<Result>(apiPath);
+            },
+            getPage: async () => (hasConfiguredSession ? ofetch<string>(pageUrl, { headers: { cookie: configured, Referer: pageUrl }, parseResponse: (text) => text }) : (await getBrowser()).getPage()),
+        });
+    } finally {
+        let browser: Awaited<ReturnType<typeof createBrowserClient>> | undefined;
+        try {
+            browser = await browserPromise;
+        } catch {
+            // Failed initialization already closes its browser before rejecting.
+        }
+        await browser?.close();
+    }
 };

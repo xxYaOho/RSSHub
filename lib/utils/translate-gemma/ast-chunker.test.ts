@@ -74,7 +74,7 @@ describe('chunkHtml', () => {
         // Text should contain the placeholder key instead of actual code
         expect(chunks[0].text).not.toContain('<code>');
         // Placeholder value must include the <code> wrapper tag
-        const placeholderValues = [...chunks[0].placeholders.values()];
+        const placeholderValues = chunks[0].placeholders.values().toArray();
         expect(placeholderValues[0]).toBe('<code>inline code</code>');
     });
 
@@ -83,7 +83,7 @@ describe('chunkHtml', () => {
         const chunks = chunkHtml(html);
 
         expect(chunks).toHaveLength(1);
-        const placeholderValues = [...chunks[0].placeholders.values()];
+        const placeholderValues = chunks[0].placeholders.values().toArray();
         expect(placeholderValues[0]).toBe('<code class="language-js">let x;</code>');
     });
 

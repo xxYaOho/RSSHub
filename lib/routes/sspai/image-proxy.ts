@@ -24,7 +24,7 @@ function contentTypeFromUrl(url: string): string {
     if (url.includes('/format/webp')) {
         return 'image/webp';
     }
-    const ext = url.split('.').pop()?.split('?')[0]?.toLowerCase();
+    const ext = url.split('.').pop()?.split('?', 1)[0]?.toLowerCase();
     switch (ext) {
         case 'png':
             return 'image/png';
@@ -55,7 +55,7 @@ function optimizeImageUrl(imageUrl: string): string {
     } else {
         u.search = 'imageView2/2/w/800/q/80/interlace/1/ignore-error/1/format/webp';
     }
-    return u.toString();
+    return u.href;
 }
 
 async function handler(ctx) {

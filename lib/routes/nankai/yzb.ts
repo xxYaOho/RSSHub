@@ -63,7 +63,7 @@ export const route: Route = {
 
         const items = await Promise.all(
             list.map((item) =>
-                cache.tryGet(item.link!.toString(), async () => {
+                cache.tryGet(item.link!, async () => {
                     const { data: response } = await got(item.link);
                     const $ = load(response);
                     item.description = $('.read').html();
@@ -92,7 +92,7 @@ export const route: Route = {
         return {
             title: `南开大学研究生招生网-${$('.column-title').text()}`,
             link: `${baseUrl}/${type}/list.htm`,
-            item: items as any[],
+            item: items,
         };
     },
 };

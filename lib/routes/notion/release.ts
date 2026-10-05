@@ -1,7 +1,7 @@
 import { load } from 'cheerio';
 import day from 'dayjs';
 
-import type { DataItem, Route } from '@/types';
+import type { Route } from '@/types';
 import cache from '@/utils/cache';
 import ofetch from '@/utils/ofetch';
 import { parseDate } from '@/utils/parse-date';
@@ -22,10 +22,10 @@ const handler: Route['handler'] = async () => {
     const link = `https://notion.so/releases/${day(pubDate).format('YYYY-MM-DD')}`;
 
     // archive
-    const item = (await Promise.all(
+    const item = await Promise.all(
         $('div[class^="releasePreviewsSection"] h3 a[href^="/releases/"]')
-            .toArray()
             .slice(0, 5)
+            .toArray()
             .map((item) => {
                 const link = `https://notion.so${item.attribs.href}`;
 
@@ -46,7 +46,7 @@ const handler: Route['handler'] = async () => {
                     };
                 });
             })
-    )) as DataItem[];
+    );
 
     return {
         title: 'Notion Releases',

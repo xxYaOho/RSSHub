@@ -22,15 +22,17 @@ function generateEnclosureInfo(htmlContent: string): { enclosure_url?: string; e
         }
 
         const extension = src.replace(/.*\./, '').toLowerCase();
-        const mimeType = MIME_TYPE_MAP[extension as keyof typeof MIME_TYPE_MAP];
+        const mimeType = Object.entries(MIME_TYPE_MAP).find(([key]) => key === extension)?.[1];
 
-        if (mimeType) {
-            enclosureInfo = {
-                enclosure_url: src,
-                enclosure_type: mimeType,
-            };
-            return false;
+        if (!mimeType) {
+            return;
         }
+
+        enclosureInfo = {
+            enclosure_url: src,
+            enclosure_type: mimeType,
+        };
+        return false;
     });
 
     return enclosureInfo;
@@ -80,7 +82,7 @@ const processPostFiles = (post: PawchivePost) =>
                 path: file.path,
             };
         })
-        .filter(Boolean) as PawchiveFile[];
+        .filter((file) => file !== null);
 
 const render = (post: PawchivePost, files: PawchiveFile[]) =>
     renderToString(
@@ -139,11 +141,11 @@ async function handler(ctx: Context) {
         throw new Error('The user does not exist.');
     }
 
-    const author = (await cache.tryGet(`pawchive:${service}:${id}`, async () => {
+    const author = await cache.tryGet<string>(`pawchive:${service}:${id}`, async () => {
         const profileUrl = `${apiBaseUrl}/${service}/user/${id}/profile`;
         const data = await ofetch(profileUrl);
         return data.name || 'Unknown User';
-    })) as Promise<string>;
+    });
 
     const items = response.map((post) => {
         const description = render(post, processPostFiles(post));

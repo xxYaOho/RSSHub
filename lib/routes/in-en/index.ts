@@ -6,7 +6,7 @@ import ofetch from '@/utils/ofetch';
 import { parseRelativeDate } from '@/utils/parse-date';
 
 // Subdomain config: name = channel display name, newsPath = news list path
-const CATEGORIES: Record<string, { name: string; newsPath: string }> = {
+const CATEGORIES = {
     solar: { name: '光伏太阳能', newsPath: '/news/' },
     wind: { name: '风电', newsPath: '/windnews/' },
     chuneng: { name: '储能', newsPath: '/news/' },
@@ -16,6 +16,7 @@ const CATEGORIES: Record<string, { name: string; newsPath: string }> = {
     power: { name: '电力', newsPath: '/news/' },
     huanbao: { name: '环保', newsPath: '/policy/' },
 };
+const isCategory = (s: string): s is keyof typeof CATEGORIES => Object.hasOwn(CATEGORIES, s);
 
 export const route: Route = {
     path: '/news/:type',
@@ -47,10 +48,10 @@ export const route: Route = {
 
     async handler(ctx) {
         const type = ctx.req.param('type')!;
-        const cat = CATEGORIES[type];
-        if (!cat) {
+        if (!isCategory(type)) {
             throw new Error(`Unknown channel type: ${type}. Valid values: ${Object.keys(CATEGORIES).join(', ')}`);
         }
+        const cat = CATEGORIES[type];
 
         const baseUrl = `https://${type}.in-en.com`;
         const listUrl = `${baseUrl}${cat.newsPath}`;
@@ -85,7 +86,7 @@ export const route: Route = {
                     author,
                     category,
                     pubDate: pubDateRaw ? parseRelativeDate(pubDateRaw) : undefined,
-                } as DataItem;
+                };
             })
             .filter((item) => item.title && item.link);
 
@@ -110,7 +111,7 @@ export const route: Route = {
         return {
             title: `国际能源网 · ${cat.name}`,
             link: listUrl,
-            item: items as DataItem[],
+            item: items,
         };
     },
 };

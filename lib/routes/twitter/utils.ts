@@ -14,10 +14,7 @@ const getOriginalImg = (url) => {
     }
     if ((m = url.match(/^(https?:\/\/\w+\.twimg\.com\/[^?]+)(\?.+)$/i))) {
         const pars = getQueryParams(url);
-        if (!pars.format || !pars.name) {
-            return url;
-        }
-        if (pars.name === 'orig') {
+        if (!pars.format || !pars.name || pars.name === 'orig') {
             return url;
         }
         return m[1] + '?format=' + pars.format + '&name=orig';
@@ -42,7 +39,31 @@ const formatText = (item) => {
     return text.trim().replaceAll('\n', '<br>');
 };
 
-const ProcessFeed = (ctx, { data = [] as any[] }, params = {} as Record<string, any>) => {
+interface ProcessFeedParams {
+    readable?: boolean;
+    authorNameBold?: boolean;
+    showAuthorInTitle?: boolean;
+    showAuthorAsTitleOnly?: boolean;
+    showAuthorInDesc?: boolean;
+    showQuotedAuthorAvatarInDesc?: boolean;
+    showAuthorAvatarInDesc?: boolean;
+    showEmojiForRetweetAndReply?: boolean;
+    showSymbolForRetweetAndReply?: boolean;
+    showRetweetTextInTitle?: boolean;
+    addLinkForPics?: boolean;
+    showTimestampInDescription?: boolean;
+    showQuotedInTitle?: boolean;
+    widthOfPics?: number;
+    heightOfPics?: number;
+    sizeOfAuthorAvatar?: number;
+    sizeOfQuotedAuthorAvatar?: number;
+    mediaNumber?: number | boolean;
+    showEmojiForSubscriberOnly?: boolean;
+    showSymbolForSubscriberOnly?: boolean;
+    showFullPrefixForSubscriberOnly?: boolean;
+}
+
+const ProcessFeed = (ctx, { data = [] }: { data?: any[] }, params: ProcessFeedParams = {}) => {
     // undefined and strings like "exclude_rts_replies" is also safely parsed, so no if branch is needed
     const routeParams = new URLSearchParams(ctx.req.param('routeParams'));
 
@@ -71,8 +92,6 @@ const ProcessFeed = (ctx, { data = [] as any[] }, params = {} as Record<string, 
         showFullPrefixForSubscriberOnly: fallback(params.showFullPrefixForSubscriberOnly, queryToBoolean(routeParams.get('showFullPrefixForSubscriberOnly')), false),
     };
 
-    params = mergedParams;
-
     const {
         readable,
         authorNameBold,
@@ -95,7 +114,7 @@ const ProcessFeed = (ctx, { data = [] as any[] }, params = {} as Record<string, 
         heightOfPics,
         sizeOfAuthorAvatar,
         sizeOfQuotedAuthorAvatar,
-    } = params;
+    } = mergedParams;
 
     const formatVideo = (media, extraAttrs = '') => {
         let content = '';
@@ -164,10 +183,11 @@ const ProcessFeed = (ctx, { data = [] as any[] }, params = {} as Record<string, 
 
                 img += content;
 
-                if (mediaNumber) {
-                    img += `<p style="text-align:center">${index}/${mediaCount}</p>`;
-                    index++;
+                if (!mediaNumber) {
+                    continue;
                 }
+                img += `<p style="text-align:center">${index}/${mediaCount}</p>`;
+                index++;
             }
         }
 
@@ -389,7 +409,10 @@ const ProcessFeed = (ctx, { data = [] as any[] }, params = {} as Record<string, 
 
         description += item.full_text;
         // 从 description 提取 话题作为 category，放在此处是为了避免 匹配到 quote 中的 # 80808030 颜色字符
-        const category = description.match(/(\s)?(#[^\s;<]+)/g)?.map((e) => e?.match(/#([^\s<]+)/)?.[1]) as string[] | undefined;
+        const category = description
+            .match(/(\s)?(#[^\s;<]+)/g)
+            ?.map((e) => e?.match(/#([^\s<]+)/)?.[1])
+            .filter((e) => e !== undefined);
         description += img;
         description += quote;
         if (readable) {
@@ -503,7 +526,7 @@ export const keepOnlyMedia = function (tweets) {
     return excluded;
 };
 
-export const getTwitterUserCacheKey = (id: string, operationName: string, params: Record<string, unknown> | undefined) => `twitter:${id}:${operationName}:${JSON.stringify(params)}`;
+export const getTwitterUserCacheKey = (id: string, operationName: string, params: Record<string, string | number | boolean | undefined> | undefined) => `twitter:${id}:${operationName}:${JSON.stringify(params)}`;
 
 export default {
     ProcessFeed,

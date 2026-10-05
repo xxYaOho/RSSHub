@@ -14,7 +14,7 @@ export const route: Route = {
     ],
     features: {
         requireConfig: false,
-        requirePuppeteer: true,
+        requirePuppeteer: false,
         antiCrawler: false,
         supportBT: false,
         supportPodcast: false,
@@ -38,7 +38,7 @@ async function handler(ctx) {
         title: 'Foresight News - 精选资讯',
         link: rootUrl,
         description: 'FN精选 - Foresight News',
-        language: 'zh-CN' as Language,
+        language: 'zh-CN' as const satisfies Language,
         image,
         icon,
         logo: icon,

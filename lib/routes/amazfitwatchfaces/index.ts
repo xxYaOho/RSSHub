@@ -3,16 +3,22 @@ import { load } from 'cheerio';
 import type { Element } from 'domhandler';
 import type { Context } from 'hono';
 
+import InvalidParameterError from '@/errors/types/invalid-parameter';
 import type { Data, DataItem, Language, Route } from '@/types';
 import { ViewType } from '@/types';
 import cache from '@/utils/cache';
 import ofetch from '@/utils/ofetch';
 import { parseDate } from '@/utils/parse-date';
+import { isValidHost } from '@/utils/valid-host';
 
 import { renderDescription } from './templates/description';
 
 export const handler = async (ctx: Context): Promise<Data> => {
     const { device, sort, searchParams } = ctx.req.param();
+    if (!isValidHost(device)) {
+        throw new InvalidParameterError('Invalid device');
+    }
+
     const limit = Number(ctx.req.query('limit') ?? '30');
 
     const baseUrl = 'https://amazfitwatchfaces.com';
@@ -20,7 +26,7 @@ export const handler = async (ctx: Context): Promise<Data> => {
 
     const response = await ofetch(targetUrl);
     const $: CheerioAPI = load(response);
-    const language = $('html').attr('lang') ?? 'en';
+    const language = ($('html').attr('lang') ?? 'en') as Language;
 
     let items: DataItem[] = $('div.wf-panel')
         .slice(0, limit)
@@ -46,10 +52,11 @@ export const handler = async (ctx: Context): Promise<Data> => {
             const authorEls: Element[] = $el.find('div.wf-user a').toArray();
             const authors: DataItem['author'] = authorEls.map((authorEl) => {
                 const $authorEl: Cheerio<Element> = $(authorEl);
+                const authorUrl: string | undefined = $authorEl.attr('href');
 
                 return {
                     name: $authorEl.text(),
-                    url: $authorEl.attr('href') ? new URL($authorEl.attr('href') as string, baseUrl).href : undefined,
+                    url: authorUrl ? new URL(authorUrl, baseUrl).href : undefined,
                     avatar: undefined,
                 };
             });
@@ -66,7 +73,7 @@ export const handler = async (ctx: Context): Promise<Data> => {
                 },
                 image,
                 banner: image,
-                language: language as Language,
+                language,
             };
 
             return processedItem;
@@ -103,10 +110,11 @@ export const handler = async (ctx: Context): Promise<Data> => {
                     const authorEls: Element[] = $$('div.wf-userinfo-name').toArray();
                     const authors: DataItem['author'] = authorEls.map((authorEl) => {
                         const $$authorEl: Cheerio<Element> = $$(authorEl).find('a.wf-author-h');
+                        const authorUrl: string | undefined = $$authorEl.attr('href');
 
                         return {
                             name: $$authorEl.text(),
-                            url: $$authorEl.attr('href') ? new URL($$authorEl.attr('href') as string, baseUrl).href : undefined,
+                            url: authorUrl ? new URL(authorUrl, baseUrl).href : undefined,
                             avatar: $$authorEl.find('img.wf-userpic').attr('src'),
                         };
                     });
@@ -126,7 +134,7 @@ export const handler = async (ctx: Context): Promise<Data> => {
                         image,
                         banner: image,
                         updated: upDatedStr ? parseDate(upDatedStr, 'DD.MM.YYYY HH:mm') : item.updated,
-                        language: language as Language,
+                        language,
                     };
 
                     return {
@@ -138,15 +146,17 @@ export const handler = async (ctx: Context): Promise<Data> => {
         )
     ).filter((_): _ is DataItem => true);
 
+    const logoUrl: string | undefined = $('img.mainlogolg').attr('src');
+
     return {
         title: $('title').text(),
         description: $('meta[property="og:description"]').attr('content'),
         link: targetUrl,
         item: items,
         allowEmpty: true,
-        image: $('img.mainlogolg').attr('src') ? new URL($('img.mainlogolg').attr('src') as string, baseUrl).href : undefined,
+        image: logoUrl ? new URL(logoUrl, baseUrl).href : undefined,
         author: $('meta[property="og:site_name"]').attr('content'),
-        language: language as Language,
+        language,
         id: targetUrl,
     };
 };

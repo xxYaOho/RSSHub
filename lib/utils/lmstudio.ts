@@ -20,10 +20,12 @@ export function cancelUnload(endpoint: string | undefined, model: string | undef
     }
     const k = keyOf(endpoint, model);
     const timer = pendingUnloads.get(k);
-    if (timer) {
-        clearTimeout(timer);
-        pendingUnloads.delete(k);
+    if (!timer) {
+        return;
     }
+
+    clearTimeout(timer);
+    pendingUnloads.delete(k);
 }
 
 // 使用后调用：延迟卸载，UNLOAD_DELAY 内无新请求则释放模型。

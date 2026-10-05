@@ -3,14 +3,20 @@ import { load } from 'cheerio';
 import type { Element } from 'domhandler';
 import type { Context } from 'hono';
 
+import InvalidParameterError from '@/errors/types/invalid-parameter';
 import type { Data, DataItem, Language, Route } from '@/types';
 import { ViewType } from '@/types';
 import cache from '@/utils/cache';
 import ofetch from '@/utils/ofetch';
 import { parseDate } from '@/utils/parse-date';
+import { isValidHost } from '@/utils/valid-host';
 
 export const handler = async (ctx: Context): Promise<Data> => {
     const { category = 'news', id = '10' } = ctx.req.param();
+    if (!isValidHost(category)) {
+        throw new InvalidParameterError('Invalid category');
+    }
+
     const limit = Number(ctx.req.query('limit') ?? '20');
 
     const baseUrl = 'https://www.cnljxh.org.cn';
@@ -18,7 +24,7 @@ export const handler = async (ctx: Context): Promise<Data> => {
 
     const response = await ofetch(targetUrl);
     const $: CheerioAPI = load(response);
-    const language = $('html').attr('lang') ?? 'zh';
+    const language = ($('html').attr('lang') ?? 'zh') as Language;
 
     let items: DataItem[] = $('div.main_left ul li')
         .slice(0, limit)
@@ -37,7 +43,7 @@ export const handler = async (ctx: Context): Promise<Data> => {
                 pubDate: pubDateStr ? parseDate(pubDateStr) : undefined,
                 link: linkUrl ? new URL(linkUrl, baseUrl).href : undefined,
                 updated: upDatedStr ? parseDate(upDatedStr) : undefined,
-                language: language as Language,
+                language,
             };
 
             return processedItem;
@@ -65,10 +71,10 @@ export const handler = async (ctx: Context): Promise<Data> => {
                         html: description,
                         text: description,
                     },
-                    language: language as Language,
+                    language,
                 };
 
-                const $enclosureEl: Cheerio<Element> = $$('div.content_div embed').first();
+                const $enclosureEl: Cheerio<Element> = $$('div.content_div embed');
                 const enclosureUrl: string | undefined = $enclosureEl.attr('src');
 
                 if (enclosureUrl) {
@@ -88,15 +94,17 @@ export const handler = async (ctx: Context): Promise<Data> => {
         })
     );
 
+    const imageUrl: string | undefined = $('div.logo a img').attr('src');
+
     return {
         title: `${$('title').text()}${$('div.mianbao').contents().last().text()}`,
         description: $('meta[name="description"]').attr('content'),
         link: targetUrl,
         item: items,
         allowEmpty: true,
-        image: $('div.logo a img').attr('src') ? new URL($('div.logo a img').attr('src') as string, targetUrl).href : undefined,
+        image: imageUrl ? new URL(imageUrl, targetUrl).href : undefined,
         author: $('meta[name="keywords"]').attr('content'),
-        language: language as Language,
+        language,
         id: targetUrl,
     };
 };

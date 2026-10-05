@@ -34,19 +34,19 @@ async function handler() {
                 const $ = load(response);
 
                 item.title = ($('meta[property="og:title"]').attr('content') ?? $('.news-title h1').text()).replace(' - 香港手機遊戲網 GameApps.hk', '');
-                item.category = $('.tags-wrap .tag-item')
+                item.category = $('.news-meta-row > .news-tags .tag-item')
                     .toArray()
-                    .map((el) => $(el).text().trim().replace(/^#/, ''));
+                    .map((el) => $(el).text().slice(1));
 
-                $('.pages, .article-ad, .social-actions, .news-footer').remove();
+                $('.pages, .article-ad, .social-actions, .news-footer, .article-action-bar, .news-tags').remove();
 
                 // remove unwanted key value
                 delete item.content;
                 delete item.contentSnippet;
                 delete item.isoDate;
 
-                const intro = $('div.introduction.media.news-intro div.media-body').html()?.trim();
-                const desc = $('.article-content, .news-content').html()?.trim();
+                const intro = $('div.introduction.media.news-intro div.media-body').html();
+                const desc = $('.article-content, .news-content').html();
                 item.description = renderToString(
                     <>
                         {intro ? raw(intro) : null}
@@ -54,11 +54,10 @@ async function handler() {
                     </>
                 );
                 item.guid = item.guid!.slice(0, item.link!.lastIndexOf('/'));
-                item.pubDate = parseDate(item.pubDate!) as unknown as string;
                 item.enclosure_url = $('div.introduction.media.news-intro div.media-left').find('img').attr('src');
                 item.enclosure_type = 'image/jpeg';
 
-                return item;
+                return { ...item, pubDate: parseDate(item.pubDate!) };
             })
         )
     );

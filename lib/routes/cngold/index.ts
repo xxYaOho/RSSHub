@@ -1,12 +1,18 @@
 import { load } from 'cheerio';
 
+import InvalidParameterError from '@/errors/types/invalid-parameter';
 import type { DataItem, Language, Route } from '@/types';
 import cache from '@/utils/cache';
 import got from '@/utils/got';
 import { parseDate } from '@/utils/parse-date';
+import { isValidHost } from '@/utils/valid-host';
 
 export const handler = async (ctx) => {
     const { category = 'news-325' } = ctx.req.param();
+    if (!isValidHost(category)) {
+        throw new InvalidParameterError('Invalid category');
+    }
+
     const limit = ctx.req.query('limit') ? Number(ctx.req.query('limit')) : 12;
 
     const rootUrl = 'https://www.cngold.org.cn';
@@ -16,7 +22,7 @@ export const handler = async (ctx) => {
 
     const $ = load(response);
 
-    const language = $('html').prop('lang');
+    const language = $('html').prop('lang') as Language;
 
     let items = $('ul.newsList li')
         .slice(0, limit)
@@ -28,7 +34,7 @@ export const handler = async (ctx) => {
                 title: $item.find('t1').text(),
                 pubDate: parseDate($item.find('div.min, div.day').text(), ['YYYY-MM-DD', 'MM-DD']),
                 link: new URL($item.find('a').prop('href')!, rootUrl).href,
-                language: language as Language,
+                language,
             };
         });
 
@@ -50,7 +56,7 @@ export const handler = async (ctx) => {
                     html: description,
                     text: $$('div.details_con').text(),
                 };
-                item.language = language as Language;
+                item.language = language;
 
                 return item;
             })
@@ -67,7 +73,7 @@ export const handler = async (ctx) => {
         allowEmpty: true,
         image,
         author: $('meta[name="keywords"]').prop('content'),
-        language: language as Language,
+        language,
     };
 };
 

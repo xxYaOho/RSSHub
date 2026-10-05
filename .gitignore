@@ -5,10 +5,10 @@
 .env
 .eslintcache
 .idea
-.pre-commit-config.yaml
 .log
 .now
 .roomodes
+.tmp/
 .vercel
 .vscode
 .windsurfrules

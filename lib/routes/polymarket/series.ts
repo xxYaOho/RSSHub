@@ -60,7 +60,7 @@ async function handler(ctx) {
             description: formatEventDescription(event),
             link: `https://polymarket.com/event/${event.slug}`,
             pubDate: event.startDate ? parseDate(event.startDate) : undefined,
-            category: event.tags?.map((t) => t.label).filter(Boolean) as string[],
+            category: event.tags?.map((t) => t.label).filter((label): label is string => Boolean(label)),
         }));
 
         return {
@@ -83,8 +83,8 @@ async function handler(ctx) {
         title: series.title,
         description: `
                 ${series.description ? `<p>${series.description}</p>` : ''}
-                <p><strong>Volume:</strong> $${Number(series.volume || 0).toLocaleString()}</p>
-                <p><strong>Liquidity:</strong> $${Number(series.liquidity || 0).toLocaleString()}</p>
+                <p><strong>Volume:</strong> $${(series.volume || 0).toLocaleString()}</p>
+                <p><strong>Liquidity:</strong> $${(series.liquidity || 0).toLocaleString()}</p>
                 ${series.image ? `<img src="${series.image}" alt="${series.title}" style="max-width: 100%;">` : ''}
             `,
         link: `https://polymarket.com/series/${series.slug}`,

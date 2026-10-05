@@ -1,8 +1,7 @@
 import { load } from 'cheerio';
-import type { Text } from 'domhandler';
 import { renderToString } from 'hono/jsx/dom/server';
 
-import type { DataItem, Language, Route } from '@/types';
+import type { DataItem, Route } from '@/types';
 import cache from '@/utils/cache';
 import ofetch from '@/utils/ofetch';
 import { parseDate } from '@/utils/parse-date';
@@ -140,16 +139,19 @@ async function handler(ctx) {
 
     const $ = load(response);
 
-    const list = $('.main-listing-container div.listing-title > a')
+    const list: DataItem[] = $('.main-listing-container div.listing-title > a')
         .toArray()
         .map((item) => {
             const $item = $(item);
-            const url = $item.parent().parent().find('.share-button').data('url') as string;
+            const url = $item.parent().parent().find('.share-button').attr('data-url');
+            if (!url) {
+                throw new Error(`Missing share URL for "${$item.text().trim()}"`);
+            }
             return {
                 title: $item.text().trim(),
                 link: url.startsWith('http') ? url : baseUrl + url,
             };
-        }) as DataItem[];
+        });
 
     const items = await Promise.all(
         list.map((item) =>
@@ -215,11 +217,10 @@ async function handler(ctx) {
                 });
 
                 const ldJson = JSON.parse(
-                    (
-                        $('script[type="application/ld+json"]')
-                            .toArray()
-                            .find((e) => $(e).text().includes('NewsArticle'))?.children as Text[] | undefined
-                    )?.[0].data as string
+                    $('script[type="application/ld+json"]')
+                        .filter((_, e) => $(e).text().includes('NewsArticle'))
+                        .first()
+                        .text()
                 );
 
                 item.description = $('div.article-detail-body-container').html()!;
@@ -236,6 +237,6 @@ async function handler(ctx) {
         link: baseUrl + '/' + category,
         description: $('head meta[name=description]').attr('content')?.trim(),
         item: items,
-        language: 'zh-HK' as Language,
+        language: 'zh-HK' as const,
     };
 }

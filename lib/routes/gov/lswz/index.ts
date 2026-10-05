@@ -11,13 +11,13 @@ export const handler = async (ctx) => {
     const limit = ctx.req.query('limit') ? Number(ctx.req.query('limit')) : 25;
 
     const rootUrl = 'https://www.lswz.gov.cn';
-    const currentUrl = new URL(`${category}.shtml`, rootUrl).href;
+    const currentUrl = `${rootUrl}/${category}.shtml`;
 
     const { data: response } = await got(currentUrl);
 
     const $ = load(response);
 
-    const language = $('html').prop('lang');
+    const language = $('html').prop('lang') as Language;
 
     let items = $('ul.lists li')
         .slice(0, limit)
@@ -54,7 +54,7 @@ export const handler = async (ctx) => {
                     html: description,
                     text: $$('table.pages_content, div.article-content, div.TRS_UEDITOR, div.TRS_PreAppend').text(),
                 };
-                item.language = language as Language;
+                item.language = language;
 
                 return item;
             })
@@ -71,7 +71,7 @@ export const handler = async (ctx) => {
         allowEmpty: true,
         image,
         author: $('meta[name="SiteName"]').prop('content'),
-        language: language as Language,
+        language,
     };
 };
 

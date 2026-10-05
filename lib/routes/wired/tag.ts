@@ -23,18 +23,25 @@ export const route: Route = {
 
 async function handler(ctx) {
     const baseUrl = 'https://www.wired.com';
-    const { tag } = ctx.req.param() as { tag: string };
+    const tag = ctx.req.param('tag');
     const link = `${baseUrl}/tag/${tag}/`;
 
     const response = await ofetch(link);
     const $ = load(response);
-    const preloadedState = JSON.parse(
+    const preloadedState: {
+        transformed: {
+            tag: { items: Item[] };
+            'head.title': string;
+            'head.description': string;
+            logo: { sources: { sm: { url: string } } };
+        };
+    } = JSON.parse(
         $('script:contains("window.__PRELOADED_STATE__")')
             .text()
             .match(/window\.__PRELOADED_STATE__ = (.*);/)?.[1] ?? '{}'
     );
 
-    const list = (preloadedState.transformed.tag.items as Item[]).map((item) => ({
+    const list = preloadedState.transformed.tag.items.map((item) => ({
         title: item.dangerousHed,
         description: item.dangerousDek,
         link: `${baseUrl}${item.url}`,
@@ -92,7 +99,7 @@ async function handler(ctx) {
         description: preloadedState.transformed['head.description'],
         link,
         image: `${baseUrl}${preloadedState.transformed.logo.sources.sm.url}`,
-        language: 'en' as Language,
+        language: 'en' as const satisfies Language,
         item: items,
     };
 }

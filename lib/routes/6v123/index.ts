@@ -17,13 +17,13 @@ export const handler = async (ctx: Context): Promise<Data> => {
     const encoding = 'gb2312';
 
     const baseUrl = 'https://www.hao6v.me';
-    const targetUrl: string = new URL(category.startsWith('gvod') ? `${category}.html` : category, baseUrl).href;
+    const targetUrl = `${baseUrl}/${category.startsWith('gvod') ? `${category}.html` : category}`;
 
     const response = await ofetch(targetUrl, {
         responseType: 'arrayBuffer',
     });
     const $: CheerioAPI = load(iconv.decode(Buffer.from(response), encoding));
-    const language = $('html').attr('lang') ?? 'zh';
+    const language = ($('html').attr('lang') ?? 'zh') as Language;
 
     let items: DataItem[] = $('ul.list li')
         .slice(0, limit)
@@ -47,7 +47,7 @@ export const handler = async (ctx: Context): Promise<Data> => {
                 guid,
                 id: guid,
                 updated: upDatedStr ? parseDate(upDatedStr, ['MM-DD', 'YYYY-MM-DD']) : undefined,
-                language: language as Language,
+                language,
             };
 
             return processedItem;
@@ -76,7 +76,7 @@ export const handler = async (ctx: Context): Promise<Data> => {
                 const description = $$('div#endText').html();
                 const pubDateStr: string | undefined = item.link?.match(/\/(\d{4}-\d{2}-\d{2})\/\d+\.html/)?.[1];
                 const categoryEls: Element[] = $$('div#endText p a').toArray();
-                const categories: string[] = [...new Set(categoryEls.map((el) => $$(el).text()?.trim()).filter(Boolean))];
+                const categories: string[] = [...new Set(categoryEls.map((el) => $$(el).text().trim()).filter(Boolean))];
                 const image: string | undefined = $$('div#endText p img').attr('src');
                 const upDatedStr: string | undefined = pubDateStr;
 
@@ -92,7 +92,7 @@ export const handler = async (ctx: Context): Promise<Data> => {
                     image,
                     banner: image,
                     updated: upDatedStr ? parseDate(upDatedStr) : item.updated,
-                    language: language as Language,
+                    language,
                 };
 
                 const $enclosureEl: Cheerio<Element> = $$('td a[href^="magnet"]').last();
@@ -125,7 +125,7 @@ export const handler = async (ctx: Context): Promise<Data> => {
         item: items,
         allowEmpty: true,
         image: new URL('images/logo.gif', baseUrl).href,
-        language: language as Language,
+        language,
         id: targetUrl,
     };
 };

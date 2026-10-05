@@ -12,7 +12,7 @@ export const handler = async (ctx) => {
     const limit = ctx.req.query('limit') ? Number(ctx.req.query('limit')) : 30;
 
     const rootUrl = 'https://www.accessbriefing.com';
-    const currentUrl = new URL(category, rootUrl).href;
+    const currentUrl = `${rootUrl}/${category}`;
     const apiUrl = new URL('Ajax/GetPagedArticles', rootUrl).href;
 
     const { data: currentResponse } = await got(currentUrl);
@@ -32,7 +32,7 @@ export const handler = async (ctx) => {
 
     const $ = load(currentResponse);
 
-    const language = $('html').prop('lang');
+    const language = $('html').prop('lang') as Language;
 
     let items = response.slice(0, limit).map((item) => {
         const title = item.Article_Headline;
@@ -64,7 +64,7 @@ export const handler = async (ctx) => {
             },
             image,
             banner: image,
-            language: language as Language,
+            language,
         };
     });
 
@@ -109,7 +109,7 @@ export const handler = async (ctx) => {
         allowEmpty: true,
         image,
         author: $('meta[property="og:site_name"]').prop('content'),
-        language: language as Language,
+        language,
     };
 };
 

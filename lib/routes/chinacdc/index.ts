@@ -16,11 +16,11 @@ export const handler = async (ctx: Context): Promise<Data> => {
     const limit = Number(ctx.req.query('limit') ?? '11');
 
     const rootUrl = 'https://www.chinacdc.cn';
-    const targetUrl: string = new URL(category.endsWith('/') ? category : `${category}/`, rootUrl).href;
+    const targetUrl = `${rootUrl}/${category.endsWith('/') ? category : `${category}/`}`;
 
     const response = await ofetch(targetUrl);
     const $: CheerioAPI = load(response);
-    const language: string = $('html').prop('lang');
+    const language = $('html').prop('lang') as Language;
 
     let items: DataItem[] = $('ul.xw_list li')
         .slice(0, limit)
@@ -47,6 +47,7 @@ export const handler = async (ctx: Context): Promise<Data> => {
                 intro: $item.find('p.zy').text(),
             });
 
+            const href = aEl.prop('href');
             const imageSrc: string | undefined = $item.find('img').prop('src');
             const imageType: string | undefined = imageSrc?.split(/\./).pop();
             const image: string | undefined = imageSrc ? new URL(imageSrc, targetUrl).href : undefined;
@@ -60,14 +61,14 @@ export const handler = async (ctx: Context): Promise<Data> => {
                 title: cleanTitle,
                 description,
                 pubDate,
-                link: new URL(aEl.prop('href') as string, targetUrl).href,
+                link: href ? new URL(href, targetUrl).href : undefined,
                 content: {
                     html: description,
                     text: $item.find('p.zy').text(),
                 },
                 image,
                 banner: image,
-                language: language as Language,
+                language,
                 media: Object.keys(media).length > 0 ? media : undefined,
             };
         });
@@ -75,7 +76,7 @@ export const handler = async (ctx: Context): Promise<Data> => {
     items = (
         await Promise.all(
             items.map((item) => {
-                if (!item.link && typeof item.link !== 'string') {
+                if (item.link === undefined) {
                     return item;
                 }
 
@@ -88,7 +89,7 @@ export const handler = async (ctx: Context): Promise<Data> => {
                         description: $$('div.TRS_Editor').html() || undefined,
                     });
 
-                    const detailDate = $$('span.fb em').text().trim();
+                    const detailDate = $$('span.fb em').text();
                     const pubDate = detailDate ? parseDate(detailDate) : item.pubDate;
 
                     return {
@@ -102,7 +103,7 @@ export const handler = async (ctx: Context): Promise<Data> => {
                         },
                         image: item.image,
                         banner: item.banner,
-                        language: language as Language,
+                        language,
                         media: item.media,
                     };
                 });
@@ -112,7 +113,8 @@ export const handler = async (ctx: Context): Promise<Data> => {
 
     const author: string = $('title').text();
     const title: string = $('div.erjiCurNav').text();
-    const feedImage: string = new URL($('img.logo').prop('src') as string, targetUrl).href;
+    const logoSrc = $('img.logo').prop('src');
+    const feedImage = logoSrc ? new URL(logoSrc, targetUrl).href : undefined;
 
     return {
         title: `${author} - ${title}`,
@@ -122,7 +124,7 @@ export const handler = async (ctx: Context): Promise<Data> => {
         allowEmpty: true,
         image: feedImage,
         author,
-        language: language as Language,
+        language,
         id: targetUrl,
     };
 };

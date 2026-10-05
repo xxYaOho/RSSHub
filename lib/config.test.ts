@@ -1,4 +1,7 @@
+import { http, HttpResponse } from 'msw';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+
+import server from '@/setup.test';
 
 afterEach(() => {
     vi.resetModules();
@@ -17,6 +20,24 @@ describe('config', () => {
 
         delete process.env.BILIBILI_COOKIE_12;
         delete process.env.BILIBILI_COOKIE_34;
+    });
+
+    it('unix socket', async () => {
+        process.env.SOCKET = '/tmp/rsshub.sock';
+
+        const { config } = await import('./config');
+        expect(config.connect.socket).toBe('/tmp/rsshub.sock');
+
+        delete process.env.SOCKET;
+    });
+
+    it('unix socket defaults to undefined', async () => {
+        process.env.SOCKET = '';
+
+        const { config } = await import('./config');
+        expect(config.connect.socket).toBeUndefined();
+
+        delete process.env.SOCKET;
     });
 
     it('email config', async () => {
@@ -105,6 +126,56 @@ describe('config', () => {
         delete process.env.CACHE_HTTP_TOKEN;
     });
 
+    it('Kemono and Coomer root URLs', async () => {
+        process.env.KEMONO_ROOT_URL = 'https://kemono.example.com/';
+        process.env.COOMER_ROOT_URL = 'https://coomer.example.com///';
+
+        const { config } = await import('./config');
+        expect(config.kemono.rootUrl).toBe('https://kemono.example.com');
+        expect(config.kemono.assetsUrl).toBe('https://img.kemono.example.com');
+        expect(config.coomer.rootUrl).toBe('https://coomer.example.com');
+        expect(config.coomer.assetsUrl).toBe('https://img.coomer.example.com');
+
+        delete process.env.KEMONO_ROOT_URL;
+        delete process.env.COOMER_ROOT_URL;
+    });
+
+    it('Kemono and Coomer inferred asset URLs preserve root paths', async () => {
+        process.env.KEMONO_ROOT_URL = 'https://kemono.example.com/mirror/';
+        process.env.COOMER_ROOT_URL = 'https://coomer.example.com/mirror///';
+
+        const { config } = await import('./config');
+        expect(config.kemono.assetsUrl).toBe('https://img.kemono.example.com/mirror');
+        expect(config.coomer.assetsUrl).toBe('https://img.coomer.example.com/mirror');
+
+        delete process.env.KEMONO_ROOT_URL;
+        delete process.env.COOMER_ROOT_URL;
+    });
+
+    it('Kemono and Coomer asset URL subdomains', async () => {
+        process.env.KEMONO_ASSETS_URL = 'https://assets.kemono.example.com/';
+        process.env.COOMER_ASSETS_URL = 'https://assets.coomer.example.com///';
+
+        const { config } = await import('./config');
+        expect(config.kemono.assetsUrl).toBe('https://assets.kemono.example.com');
+        expect(config.coomer.assetsUrl).toBe('https://assets.coomer.example.com');
+
+        delete process.env.KEMONO_ASSETS_URL;
+        delete process.env.COOMER_ASSETS_URL;
+    });
+
+    it('Kemono and Coomer asset URL path prefixes', async () => {
+        process.env.KEMONO_ASSETS_URL = 'https://kemono.example.com/assets/';
+        process.env.COOMER_ASSETS_URL = 'https://coomer.example.com/assets///';
+
+        const { config } = await import('./config');
+        expect(config.kemono.assetsUrl).toBe('https://kemono.example.com/assets');
+        expect(config.coomer.assetsUrl).toBe('https://coomer.example.com/assets');
+
+        delete process.env.KEMONO_ASSETS_URL;
+        delete process.env.COOMER_ASSETS_URL;
+    });
+
     it('remote config', async () => {
         process.env.REMOTE_CONFIG = 'http://rsshub.test/config';
 
@@ -116,35 +187,17 @@ describe('config', () => {
     });
 });
 
-const errorSpy = vi.fn();
-const infoSpy = vi.fn();
-const ofetchMock = vi.fn();
-
-const setupRemoteMocks = () => {
-    vi.resetModules();
-    vi.doMock('@/utils/logger', () => ({
-        default: {
-            error: errorSpy,
-            info: infoSpy,
-        },
-    }));
-    vi.doMock('ofetch', () => ({
-        ofetch: ofetchMock,
-    }));
-};
-
 describe('config remote errors', () => {
     afterEach(() => {
-        vi.clearAllMocks();
-        vi.unmock('@/utils/logger');
-        vi.unmock('ofetch');
-        ofetchMock.mockReset();
+        vi.restoreAllMocks();
     });
 
     it('logs when remote config returns empty', async () => {
         process.env.REMOTE_CONFIG = 'http://rsshub.test/empty';
-        setupRemoteMocks();
-        ofetchMock.mockResolvedValueOnce(null);
+        server.use(http.get('http://rsshub.test/empty', () => HttpResponse.json(null)));
+        vi.resetModules();
+        const { default: logger } = await import('@/utils/logger');
+        const errorSpy = vi.spyOn(logger, 'error').mockReturnValue(logger);
         await import('@/config');
         await vi.waitFor(() => {
             expect(errorSpy).toHaveBeenCalledWith('Remote config load failed.');
@@ -155,12 +208,13 @@ describe('config remote errors', () => {
 
     it('logs when remote config throws', async () => {
         process.env.REMOTE_CONFIG = 'http://rsshub.test/fail';
-        const error = new Error('boom');
-        setupRemoteMocks();
-        ofetchMock.mockRejectedValueOnce(error);
+        server.use(http.get('http://rsshub.test/fail', () => HttpResponse.error()));
+        vi.resetModules();
+        const { default: logger } = await import('@/utils/logger');
+        const errorSpy = vi.spyOn(logger, 'error').mockReturnValue(logger);
         await import('@/config');
         await vi.waitFor(() => {
-            expect(errorSpy).toHaveBeenCalledWith('Remote config load failed.', error);
+            expect(errorSpy).toHaveBeenCalledWith('Remote config load failed.', expect.any(Error));
         });
 
         delete process.env.REMOTE_CONFIG;

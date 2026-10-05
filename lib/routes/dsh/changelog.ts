@@ -47,19 +47,17 @@ export const route: Route = {
     handler,
     example: '/dsh/changelog',
     categories: ['program-update'],
+    // No radar rules on purpose: the source page lives on github.com, a domain already
+    // claimed by the upstream `github` namespace. Registering a radar source here would
+    // make this fork namespace own github.com's domain metadata (`_name`) and break
+    // lib/api/radar/rules/one.test.ts.
     features: {
         requireConfig: false,
         requirePuppeteer: false,
         antiCrawler: false,
-        supportRadar: true,
+        supportRadar: false,
         supportBT: false,
         supportPodcast: false,
         supportScihub: false,
     },
-    radar: [
-        {
-            source: ['github.com/deepseek-ai/deepseek-harness/releases'],
-            target: '/changelog',
-        },
-    ],
 };

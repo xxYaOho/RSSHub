@@ -28,7 +28,7 @@ export const handler = async (ctx: Context): Promise<Data> => {
     });
 
     const $: CheerioAPI = load(targetResponse);
-    const language = $('html').attr('lang') ?? 'zh-CN';
+    const language = ($('html').attr('lang') ?? 'zh-CN') as Language;
 
     let items: DataItem[] = response.data.slice(0, limit).map((item): DataItem => {
         const title: string = item.title;
@@ -54,7 +54,7 @@ export const handler = async (ctx: Context): Promise<Data> => {
             image,
             banner: image,
             updated: updated ? parseDate(updated, 'X') : undefined,
-            language: language as Language,
+            language,
         };
 
         return processedItem;
@@ -74,7 +74,7 @@ export const handler = async (ctx: Context): Promise<Data> => {
                     const title: string = $$('div.detail-title').text();
                     const description = $$('div.detail-content').html();
                     const pubDateStr: string | undefined = $$('div.detail-info span').last().text();
-                    const categories: string[] = [...new Set([...(item.category as string[]), ...($$('meta[name="keywords"]').attr('content')?.split(/,/) ?? [])])];
+                    const categories: string[] = [...new Set([...[item.category ?? []].flat(), ...($$('meta[name="keywords"]').attr('content')?.split(/,/) ?? [])])];
                     const authors: DataItem['author'] = $$('div.detail-info span').first().text().split(/：/).pop();
                     const upDatedStr: string | undefined = pubDateStr;
 
@@ -89,7 +89,7 @@ export const handler = async (ctx: Context): Promise<Data> => {
                             text: description,
                         },
                         updated: upDatedStr ? timezone(parseDate(upDatedStr), 8) : item.updated,
-                        language: language as Language,
+                        language,
                     };
 
                     return {
@@ -109,7 +109,7 @@ export const handler = async (ctx: Context): Promise<Data> => {
         allowEmpty: true,
         image: $('img.stcn-logo').attr('src'),
         author: $('meta[name="keywords"]').attr('content')?.split(/,/, 1)[0],
-        language: language as Language,
+        language,
         id: targetUrl,
     };
 };

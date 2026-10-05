@@ -32,21 +32,23 @@ function extractAttrs(el: Element): Record<string, string> {
 }
 
 function extractChunk($: CheerioAPI, $el: any): Chunk {
-    const clone = $el.clone();
+    // 仓库规则禁止 cheerio 的 .clone()：改为把元素序列化后重新解析出一份独立 DOM
+    const $$ = load(`<div>${$.html($el)}</div>`, null, false);
+    const $clone = $$('div').first();
     const placeholders = new Map<string, string>();
     let placeholderId = 0;
 
-    clone.find('code, pre').each((_: number, codeEl: any) => {
+    $clone.find('code, pre').each((_: number, codeEl: any) => {
         const key = `NO_TRANSLATE_${placeholderId++}_`;
         const codeTag = codeEl.tagName.toLowerCase();
         const codeAttrs = Object.entries(codeEl.attribs || {})
             .map(([k, v]) => ` ${k}="${entities.encodeXML(String(v))}"`)
             .join('');
-        placeholders.set(key, `<${codeTag}${codeAttrs}>${$(codeEl).html()}</${codeTag}>`);
-        $(codeEl).replaceWith(key);
+        placeholders.set(key, `<${codeTag}${codeAttrs}>${$$(codeEl).html()}</${codeTag}>`);
+        $$(codeEl).replaceWith(key);
     });
 
-    const text = clone.text().trim();
+    const text = $clone.text().trim();
     const attrs = extractAttrs($el[0]);
 
     const tagName = $el[0].tagName.toLowerCase();

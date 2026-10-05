@@ -11,6 +11,11 @@ import { decryptUrl, getRandom16, getXmSign } from './utils';
 
 const baseUrl = 'https://www.ximalaya.com';
 
+type TrackPayInfo = {
+    playPathAacv224?: string;
+    desc?: string;
+};
+
 // Find category from: https://help.apple.com/itc/podcasts_connect/?lang=en#/itc9267a2f12
 const categoryDict = {
     人文: 'Society & Culture',
@@ -23,13 +28,13 @@ const categoryDict = {
 
 function getAlbumData(albumId) {
     return cache.tryGet(`ximalaya:albumInfo:${albumId}`, async () => {
-        const response = await ofetch(`${baseUrl}/revision/album/v1/simple`, {
+        const response = await ofetch<{ data: { albumPageMainInfo: Album } }>(`${baseUrl}/revision/album/v1/simple`, {
             query: {
                 albumId,
             },
             parseResponse: JSON.parse,
         });
-        return response.data.albumPageMainInfo as Album;
+        return response.data.albumPageMainInfo;
     });
 }
 
@@ -125,9 +130,7 @@ async function handler(ctx) {
             );
         }
         const responses = await Promise.all(promises);
-        for (const j of responses) {
-            playList = [...playList, ...j.data.list];
-        }
+        playList = [...playList, ...responses.flatMap((j) => j.data.list)];
     }
 
     await Promise.all(
@@ -169,7 +172,7 @@ async function handler(ctx) {
                         },
                     });
                     const trackInfo = trackPayInfoResponse.trackInfo;
-                    const _item: Record<string, any> = {};
+                    const _item: TrackPayInfo = {};
                     if (!trackInfo?.isAuthorized) {
                         return _item;
                     }
