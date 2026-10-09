@@ -56,3 +56,5 @@ context: 1
 新增的 ChatGPT / Kimi Code changelog 路由设计见 [Changelog 路由设计（ChatGPT 与 Kimi Code）](changelog-routes-design.md)。
 
 `/dsh/changelog` 刻意不声明 `radar` 规则（`features.supportRadar: false`）。源页面在 `github.com` 上，该域名已由上游 `github` 命名空间占用；而命名空间按目录名顺序注册，`dsh` 排在 `github` 之前，一旦声明 radar 就会把 `github.com` 的域名词条（`_name`）改写为 "DeepSeek Harness"，并让上游 `lib/api/radar/rules/one.test.ts` 失败。
+
+`/dsh/changelog` 只保留 `releases.atom` 里**已发布**的条目：atom 会为尚无已发布 release 的 tag 输出条目，而 DeepSeek 发版自动化先 push tag、十几分钟后才用正式 notes 发布，窗口内会推出正文为 tag message 的假条目。判据与验证见 [known-issues](known-issues.md)。
