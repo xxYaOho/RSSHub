@@ -54,13 +54,23 @@ context: 1
 - **解法**：先重启 LM Studio（卡死时 `osascript` quit 与 SIGTERM 均无效，需 `kill -KILL`，再 `open -a "LM Studio"` 并等模型 `state: loaded`），再 `mise run restart` 重建 RSSHub 清连接。恢复后首轮翻译约 65s，随后缓存命中为毫秒级。
 - **注意**：hymt 300s 超时 ×3 重试 + 180s 预热会让一个卡死模型把请求拖数小时，属待改进点（应快速失败回退）。
 
-## GitHub releases.atom 会输出未发布的草稿 release
+## GitHub releases.atom 会为「尚无已发布 release 的 tag」输出条目
 
-- **现象**：`/dsh/changelog` 里出现正文与真实 release notes 不符的条目——标题像版本号（`dsh-v0.1.5-rc.3`），正文却是发版自动化写入的 merge commit 标题（`Merge pull request #4909 from deepseek-harness/worktree/release-dsh-0…`）。曾有阅读器只收到这样一条"新条目"。
-- **根因**：deepseek-harness 的发版流程是「合并 release PR 时先建 release 草稿（正文 = merge commit 标题），几小时后再填 notes 发布」。该仓库 25 条 release 的 `created_at` 全部早于 `published_at`（差几十分钟到十几小时），`dsh-v0.2.1-alpha.1` 的 `created_at` 与 `commits/master` 上 PR #5648 的 merge 时间精确到秒一致。而 `releases.atom` 会把未发布的草稿一并输出，草稿窗口内 feed 显示的就是 merge 标题。
-- **判据**：`api.github.com/repos/<owner>/<repo>/releases` 只返回已发布 release；某条目只存在于 atom、API 里没有、`/releases/tags/<tag>` 404，即从未发布的草稿（如 `dsh-v0.1.5-rc.3`，自 2026-09-22 挂到现在）。
-- **解法**：路由层过滤正文为 commit 标题的条目（`lib/routes/dsh/changelog.ts` 的 `isCommitSubjectBody`）；彻底方案是与 releases API 交叉校验、只保留已发布 tag。
-- **注意**：cheerio `$('content').text()` 返回的是**已解码的 HTML 字符串**（含 `<p>` 等标签），做文本匹配前需先剥标签，否则 `^Merge` 匹配不上。
+- **现象**：`/dsh/changelog` 会推出一条正文与真实 release notes 不符的"新版本"——标题是 tag 名（`dsh-v0.2.1-alpha.2`、`dsh-v0.1.5-rc.3`），正文是 tag message（`release(dsh): 0.2.1-alpha.2`）或（轻量 tag）发版 PR 的 merge 标题（`Merge pull request #5648 from …`）。阅读器一旦收到就不会再被正式 notes 覆盖：条目的 guid 就是 release URL，正式发布后内容变了、链接没变。
+- **根因**：`releases.atom` 的条目集合 = 已发布 release ∪ **尚无已发布 release 的 tag**（后者 `<title>` 是 tag 名、`<content>` 是 tag message）。deepseek-harness 的发版自动化 push tag 的同时建 release 草稿，10 分钟–2 小时后才用正式 notes 发布，这个窗口内 feed 拿到的是 tag 条目：
+    - `dsh-v0.2.1-alpha.2`：annotated tag 的 `tagger.date` = release 的 `created_at` = `2026-10-09T09:40:56Z`，`published_at` = `11:09:26Z`；阅读器在 17:40（本地）收到的正是「tag 名 + tag message」。
+    - `dsh-v0.1.5-rc.3`：轻量 tag，2026-09-22 push 后从未发布 release，所以 atom 里一直挂着一条正文为 merge 标题的条目。
+- **判据**：① `releases.atom` 条目里，`<title>` 等于 tag 名（`dsh-…`）而非 release name（`v…`）的多半是 tag 条目；② 与 `api.github.com/repos/<owner>/<repo>/releases` 交叉校验：API 只返回已发布 release，`/releases/tags/<tag>` 404 即无 release。反例验证：`torvalds/linux` 的 API releases 为 0，但 `releases.atom` 有 10 条，正是最近 10 个 tag（`v7.3-rc6` … `v7.2-rc5`）。
+- **解法**：与 releases API 交叉校验，只保留 tag 出现在 API 结果里的条目（`lib/routes/dsh/changelog.ts`）；API 不可用时退化为正文形态过滤（commit 标题、`release(scope): version`）并打 warn。旧版只做正文过滤，挡不住形态未知的 tag message（如本次的 `release(dsh): …`）。
+- **注意**：
+    - cheerio `$('content').text()` 返回的是**已解码的 HTML 字符串**（含 `<p>` 等标签），做文本匹配前需先剥标签，否则 `^Merge` 匹配不上。
+    - 已经进过阅读器的那条占位条目无法从 feed 侧修正（guid 不变），只能等阅读器自己刷新或手动重订阅。
+    - 发布后再改 notes 的情况（如 `dsh-v0.1.7-rc.2` 的 `updated_at` 比 `published_at` 晚一天）同样无法同步给已收到条目的阅读器。
+
+## lib/routes 下不能放测试文件
+
+- **现象**：在 `lib/routes/<ns>/` 放 `*.test.ts` 后，dev 实例启动即失败——`registry-dev` 用 `directoryImport` 递归 import `lib/routes/**/*.ts`，测试文件的 `vi.mock` 抛 `Vitest mocker was not initialized in this environment`，该命名空间的路由整体 503；`pnpm build:routes` 也会因 `check-orphan-files` 把 `lib/routes/**` 下的测试文件直接判为 orphan 而报错。
+- **解法**：路由测试不放 `lib/routes`（上游同样没有）。验证路由用 `.tmp/` 下的临时脚本直接 `import { route }` 调 `route.handler()` 跑真实数据。
 
 ## 单测大批量失败：缺 `assets/build/routes.json` 与沙箱端口限制
 
